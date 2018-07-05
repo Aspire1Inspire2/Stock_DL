@@ -41,9 +41,11 @@ The data is processed by the following methods:
 5. Filled all bad data (zeros and NaN) with predicted distribution and 
    reasonable extrapolations.
 
-Normalize_data.py
+
+
+Normalize_data.py: 
 It normalize the data in ~/data folder and fill in missing data using predicted
 distribution.
 
-sequence_models_tutorial.py
+sequence_models_tutorial.py: 
 A tutorial from Pytorch offical website on the LSTM model.

@@ -10,7 +10,7 @@ The data is processed by the following methods:
 
 2. Normalize the volume data by dividing to the standard deviation of each stock
 
-  $ volume = \frac{voclume}{std(volume)} $
+   volume = volume / std(volume)
 
    The trade volume for each stock is different. The input to deep learning,
    however, should be homogeneous to study the underlying pattern of stock

@@ -74,8 +74,8 @@ for i in inputs:
     # Step through the sequence one element at a time.
     # after each step, hidden contains the hidden state.
     out, hidden = lstm(i.view(1, 1, -1), hidden)
-    print (out)
-    print (hidden)
+    #print (out)
+    #print (hidden)
 
 # alternatively, we can do the entire sequence all at once.
 # the first value returned by LSTM is all of the hidden states throughout
@@ -89,8 +89,8 @@ for i in inputs:
 inputs = torch.cat(inputs_remember).view(len(inputs_remember), 1, -1)
 hidden = hidden_remember  # clean out hidden state
 out, hidden = lstm(inputs, hidden)
-print(out)
-print(hidden)
+#print(out)
+#print(hidden)
 
 
 ######################################################################
@@ -140,7 +140,6 @@ for sent, tags in training_data:
     for word in sent:
         if word not in word_to_ix:
             word_to_ix[word] = len(word_to_ix)
-print(word_to_ix)
 tag_to_ix = {"DET": 0, "NN": 1, "V": 2}
 
 # These will usually be more like 32 or 64 dimensional.

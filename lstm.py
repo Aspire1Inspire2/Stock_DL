@@ -1,4 +1,8 @@
-# -*- coding: utf-8 -*-
+"""
+Please refer the basic model to this link:
+    http://colah.github.io/posts/2015-08-Understanding-LSTMs/
+This script applies the basic LSTM algorithm in Pytorch
+"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,25 +10,46 @@ import torch.optim as optim
 
 import pandas as pd
 import numpy as np
+import random
 import pickle
 
 torch.manual_seed(1)
+np.random.seed(seed=1)
+random.seed(1)
 
 # Assign the path the the data pickle file
 data_file = open('./data/Normalized_data/normalized_data_ver5.pickle', 'rb')
 data = pickle.load(data_file)
 
-# Define a function to randomly pick the learning data
+
 def pick_randata(data, length):
+    """
+    Define a function to randomly pick the learning data
+    data is the input Pandas DataFrame, 
+    length is the number of historical entries in the input to the lstm model
+    """
     while True:
         location = np.random.randint( 1, len(data) - length + 1 )
         if data.iloc[location].name == data.iloc[location + length].name:
             return torch.tensor(data.iloc[location : location + length].values)
 
-# These will usually be more like 32 or 64 dimensional.
-# We will keep them small, so we can see how the weights change as we train.
-EMBEDDING_DIM = 6
-HIDDEN_DIM = 6
+def build_dataset(data, history_dim, train_size, test_size):
+    """
+    Build the training and testing dataset. The entries in these two dataset
+    are non-repetive. Realized by calling the random.sample method
+    data is the input Pandas DataFrame, 
+    history_dim is the number of historical entries to learn
+    train_size is the training dataset size
+    test_size is the testing dataset size
+    """
+    
+
+
+# List hyperparameters here
+HISTORY_DIM = 180
+INPUT_DIM = HISTORY_DIM*2
+HIDDEN_DIM = 14
+PREDICT_DIM = 1
 
 ######################################################################
 # Create the model:
@@ -32,22 +57,21 @@ HIDDEN_DIM = 6
 
 class LSTM_Predictor(nn.Module):
 
-    def __init__(self, input_dim, hidden_dim, vocab_size, tagset_size):
+    def __init__(self, input_dim, hidden_dim, predict_dim):
         super(LSTM_Predictor, self).__init__()
         self.hidden_dim = hidden_dim
 
-        # The LSTM takes word embeddings as inputs, and outputs hidden states
-        # with dimensionality hidden_dim.
+        # The LSTM takes stock price and volume as inputs, and outputs 
+        # hidden states with dimensionality hidden_dim.
         self.lstm = nn.LSTM(input_dim, hidden_dim)
 
-        # The linear layer that maps from hidden state space to tag space
-        self.hidden2out = nn.Linear(hidden_dim, tagset_size)
+        # The linear layer that maps from hidden state space to prediction space
+        self.hidden2out = nn.Linear(hidden_dim, predict_dim)
         self.hidden = self.init_hidden()
 
     def init_hidden(self):
-        # Before we've done anything, we dont have any hidden state.
-        # Refer to the Pytorch documentation to see exactly
-        # why they have this dimensionality.
+        # Initialize the hidden states. There are two tensors in the tuplet.
+        # They are the h_0 state and the C_0 state.
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
         return (torch.zeros(1, 1, self.hidden_dim),
                 torch.zeros(1, 1, self.hidden_dim))
@@ -55,17 +79,18 @@ class LSTM_Predictor(nn.Module):
     def forward(self, stock_data):
         lstm_out, self.hidden = self.lstm(
             stock_data.view(len(stock_data), 1, -1), self.hidden)
-        tag_space = self.hidden2out(lstm_out.view(len(stock_data), -1))
-        tag_scores = F.log_softmax(tag_space, dim=1)
-        return tag_scores
+        prediction = self.hidden2out(lstm_out.view(len(stock_data), -1))
+        #tag_scores = F.log_softmax(predict_space, dim=1)
+        return prediction
 
 ######################################################################
 # Train the model:
 
 
-model = LSTMTagger(EMBEDDING_DIM, HIDDEN_DIM, len(word_to_ix), len(tag_to_ix))
+model = LSTM_Predictor(INPUT_DIM, HIDDEN_DIM, PREDICT_DIM)
 
-# Change the loss function to mean square error
+# Change the loss function to mean square error.
+# This loss function measures distance of prediction to the actuall stock value
 loss_function = nn.MSELoss()
 optimizer = optim.SGD(model.parameters(), lr=0.1)
 

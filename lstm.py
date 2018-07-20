@@ -29,7 +29,7 @@ def load_data(data, location, length):
     length is the number of historical entries in the input to the lstm model
     """
     return torch.tensor(data.iloc[location : location + length].values, 
-                        dtype=torch.float)
+                        dtype=torch.float).cuda()
 
 def build_dataset(data, history_dim, train_size, test_size):
     """
@@ -99,13 +99,13 @@ class LSTM_Predictor(nn.Module):
         # Initialize the hidden states. There are two tensors in the tuplet.
         # They are the h_0 state and the C_0 state.
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        return (torch.zeros(1, 1, self.hidden_dim),
-                torch.zeros(1, 1, self.hidden_dim))
+        return (torch.zeros(1, 1, self.hidden_dim).cuda(),
+                torch.zeros(1, 1, self.hidden_dim).cuda())
 
-    def forward(self, stock_data):
+    def forward(self, input_data):
         lstm_out, self.hidden = self.lstm(
-            stock_data.view(len(stock_data), 1, -1), self.hidden)
-        prediction = self.hidden2out(lstm_out.view(len(stock_data), -1))
+            input_data.view(len(input_data), 1, -1), self.hidden)
+        prediction = self.hidden2out(lstm_out.view(len(input_data), -1))
         #tag_scores = F.log_softmax(predict_space, dim=1)
         return prediction
 
@@ -115,6 +115,7 @@ class LSTM_Predictor(nn.Module):
 train_tag, test_tag = build_dataset(data, HISTORY_DIM, TRAIN_SIZE, TEST_SIZE)
 
 model = LSTM_Predictor(INPUT_DIM, HIDDEN_DIM, PREDICT_DIM)
+model.cuda()
 #model = model.double()
 
 # Use the mean square errorloss function to measures the distance of 
@@ -129,7 +130,7 @@ with torch.no_grad():
         input_data = load_data(data, tag, HISTORY_DIM)
         targets = torch.tensor(
                data.iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
-                                        dtype = torch.float)
+                                        dtype = torch.float).cuda()
         tag_scores = model(input_data)
         loss = loss_function(tag_scores, targets)
         
@@ -152,7 +153,7 @@ for epoch in range(300):
         input_data = load_data(data, tag, HISTORY_DIM)
         targets = torch.tensor(
                 data.iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
-                                         dtype = torch.float)
+                                         dtype = torch.float).cuda()
 
         # Step 3. Run our forward pass.
         tag_scores = model(input_data)
@@ -171,7 +172,7 @@ with torch.no_grad():
         input_data = load_data(data, tag, HISTORY_DIM)
         targets = torch.tensor(
                data.iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
-                                        dtype = torch.float)
+                                        dtype = torch.float).cuda()
         tag_scores = model(input_data)
         loss = loss_function(tag_scores, targets)
         

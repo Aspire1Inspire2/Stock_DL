@@ -5,20 +5,76 @@ This script applies the basic LSTM algorithm in Pytorch
 """
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
 
 import pandas as pd
 import numpy as np
 import random
 import pickle
 
+torch.cuda.set_device(1)
 torch.manual_seed(1)
 random.seed(1)
 
 # Assign the path the the data pickle file
-data_file = open('./data/Normalized_data/normalized_data_ver5.pickle', 'rb')
-data = pickle.load(data_file)
+data_file = './data/Normalized_data/normalized_data_ver5.pickle'
+HISTORY_DIM = 180
+
+class StockDataset(Dataset):
+    """Face Landmarks dataset."""
+
+    def __init__(self, data_file, history_dim):
+        """
+        Args:
+            data_file (string): Path to the data file with stock information.
+            history_dim (int): Number of historical records in each sample.
+        """
+        
+        data_file_open = open(data_file, 'rb')
+        self.stock_data = pickle.load(data_file_open)
+        self.stock_index = self.stock_data.index
+        self.stock_index_unique = np.unique(self.stock_data.index.values)
+        self.stock_index_counts = self.stock_data.index.value_counts()
+        self.history_dim = history_dim
+        
+        
+        self.data_tag = []
+        self.data_length = 0
+        
+        for idx in self.stock_index_unique:
+            
+            start_location = self.stock_index.get_loc(idx).start
+            section_length = int( self.stock_index_counts.loc[idx] / 
+                                 self.history_dim)
+            self.data_length = self.data_length + section_length
+            
+            for i in range( section_length ):
+                
+                location = start_location + self.history_dim * i
+                self.data_tag.append(location)
+                
+    def __len__(self):
+        return self.data_length
+
+    def __getitem__(self, idx):
+        sample = self.stock_data.iloc[self.data_tag[idx] : 
+            self.data_tag[idx] + self.history_dim].values
+
+        return sample
+
+stock_dataset = StockDataset(data_file, HISTORY_DIM)
+
+
+
+
+
+
+
+
+
+
+
 
 
 def load_data(data, location, length):
@@ -29,7 +85,7 @@ def load_data(data, location, length):
     length is the number of historical entries in the input to the lstm model
     """
     return torch.tensor(data.iloc[location : location + length].values, 
-                        dtype=torch.float).cuda()
+                        dtype=torch.float).cuda(1)
 
 def build_dataset(data, history_dim, train_size, test_size):
     """
@@ -75,7 +131,7 @@ TRAIN_SIZE = 100
 TEST_SIZE = 20
 INPUT_DIM = 2
 HIDDEN_DIM = 14
-PREDICT_DIM = 2
+PREDICT_DIM = 1
 
 ######################################################################
 # Create the model:
@@ -99,13 +155,13 @@ class LSTM_Predictor(nn.Module):
         # Initialize the hidden states. There are two tensors in the tuplet.
         # They are the h_0 state and the C_0 state.
         # The axes semantics are (num_layers, minibatch_size, hidden_dim)
-        return (torch.zeros(1, 1, self.hidden_dim).cuda(),
-                torch.zeros(1, 1, self.hidden_dim).cuda())
+        return (torch.zeros(1, 1, self.hidden_dim).cuda(1),
+                torch.zeros(1, 1, self.hidden_dim).cuda(1))
 
     def forward(self, input_data):
         lstm_out, self.hidden = self.lstm(
             input_data.view(len(input_data), 1, -1), self.hidden)
-        prediction = self.hidden2out(lstm_out.view(len(input_data), -1))
+        prediction = self.hidden2out(lstm_out.view(len(input_data), -1)).squeeze()
         #tag_scores = F.log_softmax(predict_space, dim=1)
         return prediction
 
@@ -115,7 +171,7 @@ class LSTM_Predictor(nn.Module):
 train_tag, test_tag = build_dataset(data, HISTORY_DIM, TRAIN_SIZE, TEST_SIZE)
 
 model = LSTM_Predictor(INPUT_DIM, HIDDEN_DIM, PREDICT_DIM)
-model.cuda()
+model.cuda(1)
 #model = model.double()
 
 # Use the mean square errorloss function to measures the distance of 
@@ -129,8 +185,8 @@ with torch.no_grad():
     for tag in train_tag: #test_tag:
         input_data = load_data(data, tag, HISTORY_DIM)
         targets = torch.tensor(
-               data.iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
-                                        dtype = torch.float).cuda()
+               data['pcnt_diff'].iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
+                                        dtype = torch.float).cuda(1)
         tag_scores = model(input_data)
         loss = loss_function(tag_scores, targets)
         
@@ -152,8 +208,8 @@ for epoch in range(300):
         # Tensors of word indices.
         input_data = load_data(data, tag, HISTORY_DIM)
         targets = torch.tensor(
-                data.iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
-                                         dtype = torch.float).cuda()
+                data['pcnt_diff'].iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
+                                         dtype = torch.float).cuda(1)
 
         # Step 3. Run our forward pass.
         tag_scores = model(input_data)
@@ -171,8 +227,8 @@ with torch.no_grad():
     for tag in train_tag: #test_tag:
         input_data = load_data(data, tag, HISTORY_DIM)
         targets = torch.tensor(
-               data.iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
-                                        dtype = torch.float).cuda()
+               data['pcnt_diff'].iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
+                                        dtype = torch.float).cuda(1)
         tag_scores = model(input_data)
         loss = loss_function(tag_scores, targets)
         

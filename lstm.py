@@ -20,7 +20,7 @@ random.seed(1)
 # Assign the path the the data pickle file
 data_file = './data/Normalized_data/normalized_data_ver5.pickle'
 HISTORY_DIM = 180
-BATCH_SIZE = 10
+BATCH_SIZE = 32
 
 class StockDataset(Dataset):
     """Face Landmarks dataset."""
@@ -63,7 +63,8 @@ class StockDataset(Dataset):
         targets = self.stock_data['pcnt_diff'].iloc[self.data_tag[idx] + 1 : 
             self.data_tag[idx] + self.history_dim + 1].values
 
-        return sample, targets
+        return torch.tensor(np.float32(sample), dtype = torch.float32).cuda(), \
+            torch.tensor(np.float32(targets), dtype = torch.float32).cuda()
 
 stock_dataset = StockDataset(data_file, HISTORY_DIM)
 
@@ -74,15 +75,15 @@ stock_dataloader = DataLoader(dataset=stock_dataset, batch_size=BATCH_SIZE,
 # For testing purposes, we only need to slice some number of samples out of the
 # Dataloader. We do not need to run through the whole dataset.
 data_iter = stock_dataloader.__iter__()
-data_iter.__init__(stock_dataloader)
-for i in range(2):
-    sample, targets = data_iter.__next__()
-    print(sample)
+#data_iter.__init__(stock_dataloader)
+#for i in range(2):
+#    sample, targets = data_iter.__next__()
+#    print(sample)
     
 
 # List hyperparameters here
-TRAIN_SIZE = 100
-TEST_SIZE = 20
+TRAIN_SIZE = 10
+TEST_SIZE = 2
 INPUT_DIM = 2
 HIDDEN_DIM = 14
 PREDICT_DIM = 1
@@ -102,7 +103,8 @@ class LSTM_Predictor(nn.Module):
         # hidden states with dimensionality hidden_dim.
         self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first = True)
 
-        # The linear layer that maps from hidden state space to prediction space
+        # The linear layer that maps from hidden state space to 
+        # prediction space
         self.hidden2out = nn.Linear(hidden_dim, predict_dim)
         self.hidden = self.init_hidden()
 
@@ -110,12 +112,12 @@ class LSTM_Predictor(nn.Module):
         # Initialize the hidden states. There are two tensors in the tuplet.
         # They are the h_0 state and the C_0 state.
         # The axes semantics are (minibatch_size, num_layers, hidden_dim)
-        return (torch.zeros(self.batch_dim, 1, self.hidden_dim).cuda(1),
-                torch.zeros(self.batch_dim, 1, self.hidden_dim).cuda(1))
+        return (torch.zeros(1, self.batch_dim, self.hidden_dim).cuda(1),
+                torch.zeros(1, self.batch_dim, self.hidden_dim).cuda(1))
 
     def forward(self, input_data):
         lstm_out, self.hidden = self.lstm(input_data, self.hidden)
-        prediction = self.hidden2out(lstm_out.view(len(input_data), -1)).squeeze()
+        prediction = self.hidden2out(lstm_out).squeeze()
         #tag_scores = F.log_softmax(predict_space, dim=1)
         return prediction
 
@@ -172,11 +174,8 @@ for epoch in range(300):
 # See what the scores are after training
 # =============================================================================
 with torch.no_grad():
-    for tag in train_tag: #test_tag:
-        input_data = load_data(data, tag, HISTORY_DIM)
-        targets = torch.tensor(
-               data['pcnt_diff'].iloc[tag + 1 : tag + (HISTORY_DIM + 1)].values,
-                                        dtype = torch.float).cuda(1)
+    for item in range(TRAIN_SIZE): #test_tag:
+        input_data, targets = data_iter.__next__()
         tag_scores = model(input_data)
         loss = loss_function(tag_scores, targets)
         

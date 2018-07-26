@@ -148,7 +148,8 @@ class LSTM_Predictor(nn.Module):
         for i in range(len(hidden)):
             hidden[i] = hidden[i].permute(1, 0, 2).contiguous()
         
-        self.lstm.flatten_parameters()
+        # This flatten command cause error under multiGPU mode.
+        #self.lstm.flatten_parameters()
         lstm_out, hidden = self.lstm(input_data, hidden)
         
 #        print('output', lstm_out.size())

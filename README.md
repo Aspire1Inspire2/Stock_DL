@@ -22,7 +22,7 @@ The data is processed by the following methods:
 3. The price is normalized to percentage change since the absolute price is not
    important in the trend, only relative price is important.
 
-   However, one can also normalize the price of an stock to its "oldest" price
+   However, one can also normalize the price of a stock to its "oldest" price
    found at the first data entry. In this way, the trend of a stock is
    also maintained.
 

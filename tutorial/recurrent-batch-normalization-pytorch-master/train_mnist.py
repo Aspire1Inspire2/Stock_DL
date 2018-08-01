@@ -76,9 +76,10 @@ def main():
     def compute_loss_accuracy(data, label):
         hx = None
         if not pmnist:
-            h0 = torch.normal(mean=0.0,std=torch.ones(data.size(0), hidden_size)/10)
-            #data.new(data.size(0), hidden_size).normal_(0, 0.1)
-            c0 = torch.normal(mean=0.0,std=torch.ones(data.size(0), hidden_size)/10)
+            h0 = torch.normal(mean=0.0,
+                              std=torch.ones(data.size(0), hidden_size)/10)
+            c0 = torch.normal(mean=0.0,
+                              std=torch.ones(data.size(0), hidden_size)/10)
             hx = (h0, c0)
         _, (h_n, _) = model(input_=data, hx=hx)
         logits = fc(h_n[0])
@@ -150,14 +151,14 @@ if __name__ == '__main__':
                         help='The name of a model to use')
     parser.add_argument('--save', default='.', required=False,
                         help='The path to save model files')
-    parser.add_argument('--hidden-size', default=14, required=False, 
+    parser.add_argument('--hidden-size', default=3, required=False, 
                         type=int,
                         help='The number of hidden units')
     parser.add_argument('--pmnist', default=False, action='store_true',
                         help='If set, it uses permutated-MNIST dataset')
-    parser.add_argument('--batch-size', default=64, required=False, type=int,
+    parser.add_argument('--batch-size', default=8, required=False, type=int,
                         help='The size of each batch')
-    parser.add_argument('--max-iter', default=200, required=False, type=int,
+    parser.add_argument('--max-iter', default=100, required=False, type=int,
                         help='The maximum iteration count')
     parser.add_argument('--gpu', default=False, action='store_true',
                         help='The value specifying whether to use GPU')

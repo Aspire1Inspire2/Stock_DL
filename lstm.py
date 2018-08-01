@@ -14,39 +14,38 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from data_class import StockDataset
-from model_class import LSTM_Predictor
+from model_class import LSTM, LSTMCell, BNLSTMCell
 
 def main():
     DATA_PATH = args.data
     model_name = args.model
     save_dir = args.save
-    hidden_size = args.hidden_size
+    HIDDEN_SIZE = args.hidden_size
     pmnist = args.pmnist
-    batch_size = args.batch_size
+    BATCH_SIZE = args.batch_size
     max_iter = args.max_iter
     use_gpu = args.gpu
     
     torch.manual_seed(1)
      
     # Assign the path the the data pickle file
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if use_gpu else "cpu")
     
     # List hyperparameters here
     TRAIN_SIZE = 1
     #TEST_SIZE = 2
     INPUT_DIM = 2
-    HIDDEN_DIM = 14
+    #HIDDEN_DIM = 14
     PREDICT_DIM = 1
-    HISTORY_DIM = 180
-    BATCH_SIZE = 8192
+    #HISTORY_DIM = 180
     
-    if torch.cuda.is_available():
-        MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
-    else:
-        MINIBATCH_SIZE = BATCH_SIZE
+#    if torch.cuda.is_available():
+#        MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
+#    else:
+#        MINIBATCH_SIZE = BATCH_SIZE
     
-    stock_dataset = StockDataset(DATA_PATH, 2000, HISTORY_DIM, device)
-    
+    stock_dataset = StockDataset(DATA_PATH, BATCH_SIZE, device)
+    stock_dataset.__getitem__(0)
     stock_dataloader = DataLoader(dataset=stock_dataset, batch_size=BATCH_SIZE,
                                   shuffle=False)
     
@@ -57,39 +56,47 @@ def main():
     
     ###########################################################################
     # Train the model:
+    if model_name == 'bnlstm':
+        model = LSTM(cell_class=BNLSTMCell, input_size=INPUT_DIM,
+                     hidden_size=HIDDEN_SIZE, batch_first=True,
+                     max_length=784)
+    elif model_name == 'lstm':
+        model = LSTM(cell_class=LSTMCell, input_size=INPUT_DIM,
+                     hidden_size=HIDDEN_SIZE, batch_first=True)
+    else:
+        raise ValueError
     
-    model = LSTM_Predictor(INPUT_DIM, HISTORY_DIM, HIDDEN_DIM, 
-                           PREDICT_DIM, MINIBATCH_SIZE, device)
-    
-    if torch.cuda.device_count() > 1:
-      print("Let's use", torch.cuda.device_count(), "GPUs!")
-      # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
-      model = nn.DataParallel(model, dim=0)
+#    
+#    if use_gpu and torch.cuda.device_count() > 1:
+#      print("Let's use", torch.cuda.device_count(), "GPUs!")
+#      # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+#      model = nn.DataParallel(model, dim=0)
     
     model.to(device)
     
     # Use the mean square errorloss function to measures the distance of 
     # prediction from the actuall stock value
+    hidden2out = nn.Linear(HIDDEN_SIZE, PREDICT_DIM)
     loss_function = nn.MSELoss(size_average=True, reduce=True)
     optimizer = optim.SGD(model.parameters(), lr=0.1)
     
     # See what the scores are before training
     # =========================================================================
-    data_iter.__init__(stock_dataloader)
-    with torch.no_grad():
-        for item in range(TRAIN_SIZE):
-            hidden = model.module.init_hidden(BATCH_SIZE)
-            input_data, targets = data_iter.__next__()
-    #        input_data = input_data.transpose(0,1)
-            input_data.to(device)
-            targets.to(device)
-            tag_scores, hidden = model(input_data, hidden)
-            loss = loss_function(tag_scores, targets)
-            
-            print(loss)
+#    data_iter.__init__(stock_dataloader)
+#    with torch.no_grad():
+#        for item in range(TRAIN_SIZE):
+#            hidden = model.module.init_hidden(BATCH_SIZE)
+#            input_data, targets = data_iter.__next__()
+#    #        input_data = input_data.transpose(0,1)
+#            input_data.to(device)
+#            targets.to(device)
+#            tag_scores, hidden = model(input_data, hidden)
+#            loss = loss_function(tag_scores, targets)
+#            
+#            print(loss)
     # =========================================================================
     start_time = time.time()
-    for epoch in range(200):
+    for epoch in range(max_iter):
         print(epoch)
         data_iter.__init__(stock_dataloader)
         for item in range(TRAIN_SIZE): #test_tag:
@@ -99,21 +106,29 @@ def main():
     
             # Also, we need to clear out the hidden state of the LSTM,
             # detaching it from its history on the last instance.
-            hidden = model.module.init_hidden(BATCH_SIZE)
+            #hidden = model.init_hidden(BATCH_SIZE)
     
             # Step 2. Get our inputs ready for the network, that is, turn them 
             # into Tensors of word indices.
-            input_data, targets = data_iter.__next__()
+            input_data, targets, length = data_iter.__next__()
     #        input_data = input_data.transpose(0,1)
-            input_data.to(device)
-            targets.to(device)
             
             # Step 3. Run our forward pass.
-            tag_scores, hidden = model(input_data, hidden)
-    
+            hx = None
+            if not pmnist:
+                h0 = torch.normal(mean=0.0,
+                                  std=torch.ones(input_data.size(0), 
+                                                 HIDDEN_SIZE)/10)
+                c0 = torch.normal(mean=0.0,
+                                  std=torch.ones(input_data.size(0), 
+                                                 HIDDEN_SIZE)/10)
+                hx = (h0, c0)
+            output, (_, _) = model(input_=input_data, length=length, hx=hx)
+            prediction = hidden2out(output).squeeze()
+            
             # Step 4. Compute the loss, gradients, and update the parameters by
             #  calling optimizer.step()
-            loss = loss_function(tag_scores, targets)
+            loss = loss_function(prediction, targets)
             #print(loss)
             loss.backward()
             optimizer.step()
@@ -121,18 +136,18 @@ def main():
     print("--- %s seconds ---" % (time.time() - start_time))
     # See what the scores are after training
     # =========================================================================
-    data_iter.__init__(stock_dataloader)
-    with torch.no_grad():
-        for item in range(TRAIN_SIZE): #test_tag:
-            hidden = model.module.init_hidden(BATCH_SIZE)
-            input_data, targets = data_iter.__next__()
-    #        input_data = input_data.transpose(0,1)
-            input_data.to(device)
-            targets.to(device)
-            tag_scores, hidden = model(input_data, hidden)
-            loss = loss_function(tag_scores, targets)
-            
-            print(loss)
+#    data_iter.__init__(stock_dataloader)
+#    with torch.no_grad():
+#        for item in range(TRAIN_SIZE): #test_tag:
+#            hidden = model.module.init_hidden(BATCH_SIZE)
+#            input_data, targets = data_iter.__next__()
+#    #        input_data = input_data.transpose(0,1)
+#            input_data.to(device)
+#            targets.to(device)
+#            tag_scores, hidden = model(input_data, hidden)
+#            loss = loss_function(tag_scores, targets)
+#            
+#            print(loss)
     # =========================================================================
 
 if __name__ == '__main__':
@@ -159,4 +174,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', default=False, action='store_true',
                         help='The value specifying whether to use GPU')
     args = parser.parse_args()
+    
+    torch.set_default_tensor_type(torch.DoubleTensor)
+    
     main()

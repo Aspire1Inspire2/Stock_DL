@@ -77,7 +77,7 @@ def main():
     # Use the mean square errorloss function to measures the distance of 
     # prediction from the actuall stock value
     hidden2out = nn.Linear(HIDDEN_SIZE, PREDICT_DIM)
-    loss_function = nn.MSELoss(size_average=True, reduce=True)
+    loss_function = nn.MSELoss(reduction='elementwise_mean')
     optimizer = optim.SGD(model.parameters(), lr=0.1)
     
     # See what the scores are before training
@@ -99,7 +99,7 @@ def main():
     for epoch in range(max_iter):
         print(epoch)
         data_iter.__init__(stock_dataloader)
-        for item in range(TRAIN_SIZE): #test_tag:
+        for _ in range(TRAIN_SIZE):
             # Step 1. Remember that Pytorch accumulates gradients.
             # We need to clear them out before each instance
             model.zero_grad()
@@ -126,10 +126,14 @@ def main():
             output, (_, _) = model(input_=input_data, length=length, hx=hx)
             prediction = hidden2out(output).squeeze()
             
+            for i in range(0, BATCH_SIZE):
+                j = int(length[i])
+                targets[i, j:] = prediction[i, j - 1].item()
+            
             # Step 4. Compute the loss, gradients, and update the parameters by
             #  calling optimizer.step()
             loss = loss_function(prediction, targets)
-            #print(loss)
+            print(loss)
             loss.backward()
             optimizer.step()
     
@@ -149,7 +153,9 @@ def main():
 #            
 #            print(loss)
     # =========================================================================
-
+    
+    torch.save(model,'{}/{}'.format(save_dir, 'lstm_model'))
+    
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Train the model using MNIST dataset.')
     parser.add_argument('--data', default=

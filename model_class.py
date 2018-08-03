@@ -25,8 +25,8 @@ class SeparatedBatchNorm1d(nn.Module):
         self.eps = eps
         self.momentum = momentum
         if self.affine:
-            self.weight = nn.Parameter(torch.DoubleTensor(num_features))
-            self.bias = nn.Parameter(torch.DoubleTensor(num_features))
+            self.weight = nn.Parameter(torch.zeros(num_features))
+            self.bias = nn.Parameter(torch.zeros(num_features))
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
@@ -73,7 +73,7 @@ class LSTMCell(nn.Module):
 
     """A basic LSTM cell."""
 
-    def __init__(self, input_size, hidden_size, use_bias=True):
+    def __init__(self, input_size, hidden_size, device, use_bias=True):
         """
         Most parts are copied from torch.nn.LSTMCell.
         """
@@ -81,13 +81,15 @@ class LSTMCell(nn.Module):
         super(LSTMCell, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.device = device
         self.use_bias = use_bias
         self.weight_ih = nn.Parameter(
-            torch.DoubleTensor(input_size, 4 * hidden_size))
+            torch.zeros(input_size, 4 * hidden_size, device = self.device))
         self.weight_hh = nn.Parameter(
-            torch.DoubleTensor(hidden_size, 4 * hidden_size))
+            torch.zeros(hidden_size, 4 * hidden_size, device = self.device))
         if use_bias:
-            self.bias = nn.Parameter(torch.DoubleTensor(4 * hidden_size))
+            self.bias = nn.Parameter(
+                    torch.zeros(4 * hidden_size, device = self.device))
         else:
             self.register_parameter('bias', None)
         self.reset_parameters()
@@ -98,7 +100,7 @@ class LSTMCell(nn.Module):
         """
 
         init.orthogonal_(self.weight_ih.data)
-        weight_hh_data = torch.eye(self.hidden_size)
+        weight_hh_data = torch.eye(self.hidden_size, device = self.device)
         weight_hh_data = weight_hh_data.repeat(1, 4)
         self.weight_hh.data.set_(weight_hh_data)
         # The bias is just set to zero vectors.
@@ -140,19 +142,22 @@ class BNLSTMCell(nn.Module):
 
     """A BN-LSTM cell."""
 
-    def __init__(self, input_size, hidden_size, max_length, use_bias=True):
+    def __init__(self, input_size, hidden_size, max_length, 
+                 device, use_bias=True):
 
         super(BNLSTMCell, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.max_length = max_length
+        self.device = device
         self.use_bias = use_bias
         self.weight_ih = nn.Parameter(
-            torch.DoubleTensor(input_size, 4 * hidden_size))
+            torch.zeros(input_size, 4 * hidden_size, device = self.device))
         self.weight_hh = nn.Parameter(
-            torch.DoubleTensor(hidden_size, 4 * hidden_size))
+            torch.zeros(hidden_size, 4 * hidden_size, device = self.device))
         if use_bias:
-            self.bias = nn.Parameter(torch.DoubleTensor(4 * hidden_size))
+            self.bias = nn.Parameter(
+                    torch.zeros(4 * hidden_size, device = self.device))
         else:
             self.register_parameter('bias', None)
         # BN parameters
@@ -202,7 +207,6 @@ class BNLSTMCell(nn.Module):
         Returns:
             h_1, c_1: Tensors containing the next hidden and cell state.
         """
-
         h_0, c_0 = hx
         batch_size = h_0.size(0)
         bias_batch = (self.bias.unsqueeze(0)
@@ -223,21 +227,24 @@ class LSTM(nn.Module):
 
     """A module that runs multiple steps of LSTM."""
 
-    def __init__(self, cell_class, input_size, hidden_size, num_layers=1,
-                 use_bias=True, batch_first=False, dropout=0, **kwargs):
+    def __init__(self, cell_class, input_size, hidden_size, device, 
+                 num_layers=1, use_bias=True, 
+                 batch_first=False, dropout=0, **kwargs):
         super(LSTM, self).__init__()
         self.cell_class = cell_class
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.device = device
         self.use_bias = use_bias
         self.batch_first = batch_first
         self.dropout = dropout
 
         for layer in range(num_layers):
             layer_input_size = input_size if layer == 0 else hidden_size
-            cell = cell_class(input_size=layer_input_size,
-                              hidden_size=hidden_size,
+            cell = cell_class(input_size = layer_input_size,
+                              hidden_size = hidden_size,
+                              device = device,
                               **kwargs)
             setattr(self, 'cell_{}'.format(layer), cell)
         self.dropout_layer = nn.Dropout(dropout)
@@ -274,14 +281,17 @@ class LSTM(nn.Module):
         if self.batch_first:
             input_ = input_.transpose(0, 1)
         max_time, batch_size, _ = input_.size()
+        
         if length is None:
             length = torch.LongTensor([max_time] * batch_size)
             if input_.is_cuda:
                 device = input_.get_device()
                 length = length.cuda(device)
         if hx is None:
-            hx = torch.zeros(batch_size, self.hidden_size)
-            hx = (hx, hx)
+            hx = (torch.zeros(batch_size, self.hidden_size, 
+                              device = self.device), 
+                  torch.zeros(batch_size, self.hidden_size, 
+                              device = self.device))
         h_n = []
         c_n = []
         layer_output = None

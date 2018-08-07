@@ -24,7 +24,7 @@ import utility as util
 global logger
 
 util.setup_log()
-util.setup_path()
+util.setup_path(s3_prefix='prefix',data_dir='~/nasdaq100')
 logger = util.logger
 
 use_cuda = torch.cuda.is_available()
@@ -150,18 +150,18 @@ class da_rnn:
         self.batch_size = batch_size
 
         self.encoder = encoder(input_size = self.X.shape[1], hidden_size = encoder_hidden_size, T = T,
-                              logger = logger).cuda()
+                              logger = logger) #.cuda()
         self.decoder = decoder(encoder_hidden_size = encoder_hidden_size,
                                decoder_hidden_size = decoder_hidden_size,
-                               T = T, logger = logger).cuda()
+                               T = T, logger = logger) #.cuda()
 
         if parallel:
             self.encoder = nn.DataParallel(self.encoder)
             self.decoder = nn.DataParallel(self.decoder)
 
-        self.encoder_optimizer = optim.Adam(params = itertools.ifilter(lambda p: p.requires_grad, self.encoder.parameters()),
+        self.encoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, self.encoder.parameters()),
                                            lr = learning_rate)
-        self.decoder_optimizer = optim.Adam(params = itertools.ifilter(lambda p: p.requires_grad, self.decoder.parameters()),
+        self.decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, self.decoder.parameters()),
                                            lr = learning_rate)
         # self.learning_rate = learning_rate
 
@@ -195,7 +195,7 @@ class da_rnn:
                     y_history[k, :] = self.y[batch_idx[k] : (batch_idx[k] + self.T - 1)]
 
                 loss = self.train_iteration(X, y_history, y_target)
-                self.iter_losses[i * iter_per_epoch + j / self.batch_size] = loss
+                self.iter_losses[i * iter_per_epoch + int(j / self.batch_size)] = loss
                 #if (j / self.batch_size) % 50 == 0:
                 #    self.logger.info("Epoch %d, Batch %d: loss = %3.3f.", i, j / self.batch_size, loss)
                 j += self.batch_size
@@ -235,10 +235,10 @@ class da_rnn:
         self.encoder_optimizer.zero_grad()
         self.decoder_optimizer.zero_grad()
 
-        input_weighted, input_encoded = self.encoder(Variable(torch.from_numpy(X).type(torch.FloatTensor).cuda()))
-        y_pred = self.decoder(input_encoded, Variable(torch.from_numpy(y_history).type(torch.FloatTensor).cuda()))
+        input_weighted, input_encoded = self.encoder(Variable(torch.from_numpy(X).type(torch.FloatTensor))) #.cuda()
+        y_pred = self.decoder(input_encoded, Variable(torch.from_numpy(y_history).type(torch.FloatTensor))).squeeze() #.cuda()
 
-        y_true = Variable(torch.from_numpy(y_target).type(torch.FloatTensor).cuda())
+        y_true = Variable(torch.from_numpy(y_target).type(torch.FloatTensor)) #.cuda()
         loss = self.loss_func(y_pred, y_true)
         loss.backward()
 
@@ -269,8 +269,8 @@ class da_rnn:
                     X[j, :, :] = self.X[range(batch_idx[j] + self.train_size - self.T, batch_idx[j] + self.train_size - 1), :]
                     y_history[j, :] = self.y[range(batch_idx[j] + self.train_size - self.T,  batch_idx[j]+ self.train_size - 1)]
 
-            y_history = Variable(torch.from_numpy(y_history).type(torch.FloatTensor).cuda())
-            _, input_encoded = self.encoder(Variable(torch.from_numpy(X).type(torch.FloatTensor).cuda()))
+            y_history = Variable(torch.from_numpy(y_history).type(torch.FloatTensor)) #.cuda()
+            _, input_encoded = self.encoder(Variable(torch.from_numpy(X).type(torch.FloatTensor))) #.cuda()
             y_pred[i:(i + self.batch_size)] = self.decoder(input_encoded, y_history).cpu().data.numpy()[:, 0]
             i += self.batch_size
         return y_pred
@@ -279,9 +279,9 @@ class da_rnn:
 
 # In[ ]:
 
-io_dir = '~/nasdaq'
+io_dir = '.'
 
-model = da_rnn(file_data = '{}/data/nasdaq100_padding.csv'.format(io_dir), logger = logger, parallel = False,
+model = da_rnn(file_data = "{}/nasdaq100_padding.csv".format(io_dir), logger = logger, parallel = False,
               learning_rate = .001)
 
 model.train(n_epochs = 500)

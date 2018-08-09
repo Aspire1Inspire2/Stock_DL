@@ -5,23 +5,20 @@
 # source: https://arxiv.org/pdf/1704.02971.pdf
 # pytorch example: http://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
 
-# In[1]:
 
 import torch
 from torch import nn
-#from torch.autograd import Variable
 from torch import optim
 import torch.nn.functional as F
-
-#import matplotlib
-# matplotlib.use('Agg')
-#get_ipython().magic(u'matplotlib inline')
+from torch.utils.data import DataLoader
 
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
+import argparse
 import utility as util
+from data_class import StockDataset
 
 global logger
 
@@ -33,7 +30,6 @@ use_cuda = torch.cuda.is_available()
 logger.info("Is CUDA available? %s.", use_cuda)
 
 
-# In[2]:
 
 class encoder(nn.Module):
     def __init__(self, input_size, hidden_size, T, logger):
@@ -141,170 +137,232 @@ class decoder(nn.Module):
                             dtype=None, device=None, requires_grad=False)
 
 
-# In[ ]:
 
-# Train the model
-class da_rnn:
-    def __init__(self, file_data, logger, encoder_hidden_size = 64, decoder_hidden_size = 64, T = 10,
-                 learning_rate = 0.01, batch_size = 128, parallel = True, debug = False):
-        self.T = T
-        dat = pd.read_csv(file_data, nrows = 100 if debug else None)
-        self.logger = logger
-        self.logger.info("Shape of data: %s.\nMissing in data: %s.", dat.shape, dat.isnull().sum().sum())
+#def __init__(self, file_data, logger, encoder_hidden_size = 64, decoder_hidden_size = 64, T = 10,
+#             learning_rate = 0.01, batch_size = 128, parallel = True, debug = False):
+parser = argparse.ArgumentParser('Train the model using MNIST dataset.')
+parser.add_argument('--data', default=
+                    './normalized_data_ver5.pickle', 
+                    required=False,
+                    help='The path to save MNIST dataset, or '
+                         'the path the dataset is located')
+parser.add_argument('--model', default='lstm', required=False, 
+                    choices=['lstm', 'bnlstm'],
+                    help='The name of a model to use')
+parser.add_argument('--save', default='.', required=False,
+                    help='The path to save model files')
+parser.add_argument('--hidden-size', default=3, required=False, 
+                    type=int,
+                    help='The number of hidden units')
+parser.add_argument('--pmnist', default=False, action='store_true',
+                    help='If set, it uses permutated-MNIST dataset')
+parser.add_argument('--batch-size', default=700, required=False, type=int,
+                    help='The size of each batch')
+parser.add_argument('--max-iter', default=3, required=False, type=int,
+                    help='The maximum iteration count')
+parser.add_argument('--gpu', default=True, action='store_true',
+                    help='The value specifying whether to use GPU')
+args = parser.parse_args()
 
-        self.X = dat.loc[:, [x for x in dat.columns.tolist() if x != 'NDX']].values
-        self.y = np.array(dat.NDX)
-        self.batch_size = batch_size
+# Assign the path the the data pickle file
+DATA_PATH = args.data
+model_name = args.model
+save_dir = args.save
+HIDDEN_SIZE = args.hidden_size
+pmnist = args.pmnist
+BATCH_SIZE = args.batch_size
+max_iter = args.max_iter
+use_gpu = args.gpu
 
-        self.encoder = encoder(input_size = self.X.shape[1], hidden_size = encoder_hidden_size, T = T,
-                              logger = logger)
-        self.decoder = decoder(encoder_hidden_size = encoder_hidden_size,
-                               decoder_hidden_size = decoder_hidden_size,
-                               T = T, logger = logger)
+torch.manual_seed(1)
+ 
 
-        if parallel:
-            self.encoder = nn.DataParallel(self.encoder)
-            self.decoder = nn.DataParallel(self.decoder)
+device = torch.device("cuda:0" if use_gpu else "cpu")
+if use_gpu:
+    torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+else:
+    torch.set_default_tensor_type(torch.DoubleTensor)
+    
+# List hyperparameters here
+TRAIN_SIZE = 1
+#TEST_SIZE = 2
+INPUT_DIM = 2
+#HIDDEN_DIM = 14
+PREDICT_DIM = 1
+#HISTORY_DIM = 180
 
-        self.encoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, self.encoder.parameters()),
-                                           lr = learning_rate)
-        self.decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, self.decoder.parameters()),
-                                           lr = learning_rate)
-        # self.learning_rate = learning_rate
+#    if torch.cuda.is_available():
+#        MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
+#    else:
+#        MINIBATCH_SIZE = BATCH_SIZE
 
-        self.train_size = int(self.X.shape[0] * 0.7)
-        self.y = self.y - np.mean(self.y[:self.train_size]) # Question: why Adam requires data to be normalized?
-        self.logger.info("Training size: %d.", self.train_size)
+stock_dataset = StockDataset(DATA_PATH, BATCH_SIZE, device)
+stock_dataset.__getitem__(0)
+stock_dataloader = DataLoader(dataset=stock_dataset, batch_size=BATCH_SIZE,
+                              shuffle=False)
 
-    def train(self, n_epochs = 10):
-        iter_per_epoch = int(np.ceil(self.train_size * 1. / self.batch_size))
-        logger.info("Iterations per epoch: %3.3f ~ %d.", self.train_size * 1. / self.batch_size, iter_per_epoch)
-        self.iter_losses = np.zeros(n_epochs * iter_per_epoch)
-        self.epoch_losses = np.zeros(n_epochs)
-
-        self.loss_func = nn.MSELoss()
-
-        n_iter = 0
-
-        #learning_rate = 1.
-
-        for i in range(n_epochs):
-            perm_idx = np.random.permutation(self.train_size - self.T)
-            j = 0
-            while j < self.train_size:
-                batch_idx = perm_idx[j:(j + self.batch_size)]
-                X = np.zeros((len(batch_idx), self.T - 1, self.X.shape[1]))
-                y_history = np.zeros((len(batch_idx), self.T - 1))
-                y_target = self.y[batch_idx + self.T]
-
-                for k in range(len(batch_idx)):
-                    X[k, :, :] = self.X[batch_idx[k] : (batch_idx[k] + self.T - 1), :]
-                    y_history[k, :] = self.y[batch_idx[k] : (batch_idx[k] + self.T - 1)]
-
-                loss = self.train_iteration(X, y_history, y_target)
-                self.iter_losses[i * iter_per_epoch + int(j / self.batch_size)] = loss
-                #if (j / self.batch_size) % 50 == 0:
-                #    self.logger.info("Epoch %d, Batch %d: loss = %3.3f.", i, j / self.batch_size, loss)
-                j += self.batch_size
-                n_iter += 1
-
-                if n_iter % 10000 == 0 and n_iter > 0:
-                    for param_group in self.encoder_optimizer.param_groups:
-                        param_group['lr'] = param_group['lr'] * 0.9
-                    for param_group in self.decoder_optimizer.param_groups:
-                        param_group['lr'] = param_group['lr'] * 0.9
-                '''
-                if learning_rate > self.learning_rate:
-                    for param_group in self.encoder_optimizer.param_groups:
-                        param_group['lr'] = param_group['lr'] * .9
-                    for param_group in self.decoder_optimizer.param_groups:
-                        param_group['lr'] = param_group['lr'] * .9
-                    learning_rate *= .9
-                '''
+# For testing purposes, we only need to slice some number of samples out of
+# the Dataloader. We do not need to run through the whole dataset.
+data_iter = stock_dataloader.__iter__()
 
 
-            self.epoch_losses[i] = np.mean(self.iter_losses[range(i * iter_per_epoch, (i + 1) * iter_per_epoch)])
-            if i % 10 == 0:
-                self.logger.info("Epoch %d, loss: %3.3f.", i, self.epoch_losses[i])
+logger.info("Shape of data: %s.\nMissing in data: %s.", dat.shape, dat.isnull().sum().sum())
 
-            if i % 10 == 0:
-                y_train_pred = self.predict(on_train = True)
-                y_test_pred = self.predict(on_train = False)
-                #y_pred = np.concatenate((y_train_pred, y_test_pred))
-                plt.figure()
-                plt.plot(range(1, 1 + len(self.y)), self.y, label = "True")
-                plt.plot(range(self.T , len(y_train_pred) + self.T), y_train_pred, label = 'Predicted - Train')
-                plt.plot(range(self.T + len(y_train_pred) , len(self.y) + 1), y_test_pred, label = 'Predicted - Test')
-                plt.legend(loc = 'upper left')
-                plt.show()
+X = dat.loc[:, [x for x in dat.columns.tolist() if x != 'NDX']].values
+y = np.array(dat.NDX)
 
-    def train_iteration(self, X, y_history, y_target):
-        self.encoder_optimizer.zero_grad()
-        self.decoder_optimizer.zero_grad()
+encoder = encoder(input_size = X.shape[1], hidden_size = encoder_hidden_size, T = T,
+                      logger = logger)
+decoder = decoder(encoder_hidden_size = encoder_hidden_size,
+                       decoder_hidden_size = decoder_hidden_size,
+                       T = T, logger = logger)
 
-        input_weighted, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=False))
-        y_pred = self.decoder(input_encoded, torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=False)).squeeze()
+if parallel:
+    encoder = nn.DataParallel(encoder)
+    decoder = nn.DataParallel(decoder)
 
-        y_true = torch.tensor(y_target, dtype=torch.float, device=None, requires_grad=False)
-        loss = self.loss_func(y_pred, y_true)
-        loss.backward()
+encoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, encoder.parameters()),
+                                   lr = learning_rate)
+decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decoder.parameters()),
+                                   lr = learning_rate)
+# learning_rate = learning_rate
 
-        self.encoder_optimizer.step()
-        self.decoder_optimizer.step()
+train_size = int(X.shape[0] * 0.7)
+y = y - np.mean(y[:train_size]) # Question: why Adam requires data to be normalized?
+logger.info("Training size: %d.", train_size)
 
-        # if loss.item() < 10:
-        #     self.logger.info("MSE: %s, loss: %s.", loss.item(), (y_pred[:, 0] - y_true).pow(2).mean())
+    
+def train(self, n_epochs = 10):
+    iter_per_epoch = int(np.ceil(self.train_size * 1. / self.batch_size))
+    logger.info("Iterations per epoch: %3.3f ~ %d.", self.train_size * 1. / self.batch_size, iter_per_epoch)
+    self.iter_losses = np.zeros(n_epochs * iter_per_epoch)
+    self.epoch_losses = np.zeros(n_epochs)
 
-        return loss.item()
+    self.loss_func = nn.MSELoss()
 
-    def predict(self, on_train = False):
-        if on_train:
-            y_pred = np.zeros(self.train_size - self.T + 1)
-        else:
-            y_pred = np.zeros(self.X.shape[0] - self.train_size)
+    n_iter = 0
 
-        i = 0
-        while i < len(y_pred):
-            batch_idx = np.array(range(len(y_pred)))[i : (i + self.batch_size)]
+    #learning_rate = 1.
+
+    for i in range(n_epochs):
+        perm_idx = np.random.permutation(self.train_size - self.T)
+        j = 0
+        while j < self.train_size:
+            batch_idx = perm_idx[j:(j + self.batch_size)]
             X = np.zeros((len(batch_idx), self.T - 1, self.X.shape[1]))
             y_history = np.zeros((len(batch_idx), self.T - 1))
-            for j in range(len(batch_idx)):
-                if on_train:
-                    X[j, :, :] = self.X[range(batch_idx[j], batch_idx[j] + self.T - 1), :]
-                    y_history[j, :] = self.y[range(batch_idx[j],  batch_idx[j]+ self.T - 1)]
-                else:
-                    X[j, :, :] = self.X[range(batch_idx[j] + self.train_size - self.T, batch_idx[j] + self.train_size - 1), :]
-                    y_history[j, :] = self.y[range(batch_idx[j] + self.train_size - self.T,  batch_idx[j]+ self.train_size - 1)]
+            y_target = self.y[batch_idx + self.T]
 
-            y_history = torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=False)
-            _, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=False))
-            y_pred[i:(i + self.batch_size)] = self.decoder(input_encoded, y_history).cpu().data.numpy()[:, 0]
-            i += self.batch_size
-        return y_pred
+            for k in range(len(batch_idx)):
+                X[k, :, :] = self.X[batch_idx[k] : (batch_idx[k] + self.T - 1), :]
+                y_history[k, :] = self.y[batch_idx[k] : (batch_idx[k] + self.T - 1)]
+
+            loss = self.train_iteration(X, y_history, y_target)
+            self.iter_losses[i * iter_per_epoch + int(j / self.batch_size)] = loss
+            #if (j / self.batch_size) % 50 == 0:
+            #    self.logger.info("Epoch %d, Batch %d: loss = %3.3f.", i, j / self.batch_size, loss)
+            j += self.batch_size
+            n_iter += 1
+
+            if n_iter % 10000 == 0 and n_iter > 0:
+                for param_group in self.encoder_optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] * 0.9
+                for param_group in self.decoder_optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] * 0.9
+            '''
+            if learning_rate > self.learning_rate:
+                for param_group in self.encoder_optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] * .9
+                for param_group in self.decoder_optimizer.param_groups:
+                    param_group['lr'] = param_group['lr'] * .9
+                learning_rate *= .9
+            '''
+
+
+        self.epoch_losses[i] = np.mean(self.iter_losses[range(i * iter_per_epoch, (i + 1) * iter_per_epoch)])
+        if i % 10 == 0:
+            self.logger.info("Epoch %d, loss: %3.3f.", i, self.epoch_losses[i])
+
+        if i % 10 == 0:
+            y_train_pred = self.predict(on_train = True)
+            y_test_pred = self.predict(on_train = False)
+            #y_pred = np.concatenate((y_train_pred, y_test_pred))
+            plt.figure()
+            plt.plot(range(1, 1 + len(self.y)), self.y, label = "True")
+            plt.plot(range(self.T , len(y_train_pred) + self.T), y_train_pred, label = 'Predicted - Train')
+            plt.plot(range(self.T + len(y_train_pred) , len(self.y) + 1), y_test_pred, label = 'Predicted - Test')
+            plt.legend(loc = 'upper left')
+            plt.show()
+
+def train_iteration(self, X, y_history, y_target):
+    self.encoder_optimizer.zero_grad()
+    self.decoder_optimizer.zero_grad()
+
+    input_weighted, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=False))
+    y_pred = self.decoder(input_encoded, torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=False)).squeeze()
+
+    y_true = torch.tensor(y_target, dtype=torch.float, device=None, requires_grad=False)
+    loss = self.loss_func(y_pred, y_true)
+    loss.backward()
+
+    self.encoder_optimizer.step()
+    self.decoder_optimizer.step()
+
+    # if loss.item() < 10:
+    #     self.logger.info("MSE: %s, loss: %s.", loss.item(), (y_pred[:, 0] - y_true).pow(2).mean())
+
+    return loss.item()
+
+def predict(self, on_train = False):
+    if on_train:
+        y_pred = np.zeros(self.train_size - self.T + 1)
+    else:
+        y_pred = np.zeros(self.X.shape[0] - self.train_size)
+
+    i = 0
+    while i < len(y_pred):
+        batch_idx = np.array(range(len(y_pred)))[i : (i + self.batch_size)]
+        X = np.zeros((len(batch_idx), self.T - 1, self.X.shape[1]))
+        y_history = np.zeros((len(batch_idx), self.T - 1))
+        for j in range(len(batch_idx)):
+            if on_train:
+                X[j, :, :] = self.X[range(batch_idx[j], batch_idx[j] + self.T - 1), :]
+                y_history[j, :] = self.y[range(batch_idx[j],  batch_idx[j]+ self.T - 1)]
+            else:
+                X[j, :, :] = self.X[range(batch_idx[j] + self.train_size - self.T, batch_idx[j] + self.train_size - 1), :]
+                y_history[j, :] = self.y[range(batch_idx[j] + self.train_size - self.T,  batch_idx[j]+ self.train_size - 1)]
+
+        y_history = torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=False)
+        _, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=False))
+        y_pred[i:(i + self.batch_size)] = self.decoder(input_encoded, y_history).cpu().data.numpy()[:, 0]
+        i += self.batch_size
+    return y_pred
 
 
 
-# In[ ]:
+#
+#
+#io_dir = '.'
+#
+#model = da_rnn(file_data = "{}/nasdaq100_padding.csv".format(io_dir), logger = logger, parallel = False,
+#              learning_rate = .001)
+#
+#model.train(n_epochs = 500)
+#
+#y_pred = model.predict()
+#
+#plt.figure()
+#plt.semilogy(range(len(model.iter_losses)), model.iter_losses)
+#plt.show()
+#
+#plt.figure()
+#plt.semilogy(range(len(model.epoch_losses)), model.epoch_losses)
+#plt.show()
+#
+#plt.figure()
+#plt.plot(y_pred, label = 'Predicted')
+#plt.plot(model.y[model.train_size:], label = "True")
+#plt.legend(loc = 'upper left')
+#plt.show()
 
-io_dir = '.'
 
-model = da_rnn(file_data = "{}/nasdaq100_padding.csv".format(io_dir), logger = logger, parallel = False,
-              learning_rate = .001)
-
-model.train(n_epochs = 500)
-
-y_pred = model.predict()
-
-plt.figure()
-plt.semilogy(range(len(model.iter_losses)), model.iter_losses)
-plt.show()
-
-plt.figure()
-plt.semilogy(range(len(model.epoch_losses)), model.epoch_losses)
-plt.show()
-
-plt.figure()
-plt.plot(y_pred, label = 'Predicted')
-plt.plot(model.y[model.train_size:], label = "True")
-plt.legend(loc = 'upper left')
-plt.show()

@@ -53,9 +53,9 @@ class encoder(nn.Module):
     def forward(self, input_data):
         # input_data: batch_size * T - 1 * input_size
         input_weighted = torch.zeros([input_data.size(0), self.T - 1, self.input_size], 
-                                      dtype=None, device=None, requires_grad=True)
+                                      dtype=None, device=None, requires_grad=False)
         input_encoded = torch.zeros([input_data.size(0), self.T - 1, self.hidden_size], 
-                                     dtype=None, device=None, requires_grad=True)
+                                     dtype=None, device=None, requires_grad=False)
         # hidden, cell: initial states with dimention hidden_size
         hidden = self.init_hidden(input_data) # 1 * batch_size * hidden_size
         cell = self.init_hidden(input_data)
@@ -86,7 +86,7 @@ class encoder(nn.Module):
         # No matter whether CUDA is used, the returned variable will have the same type as x.
         # dimension 0 is the batch dimension
         return torch.zeros([1, x.size(0), self.hidden_size], 
-                            dtype=None, device=None, requires_grad=True) 
+                            dtype=None, device=None, requires_grad=False) 
 
 class decoder(nn.Module):
     def __init__(self, encoder_hidden_size, decoder_hidden_size, T, logger):
@@ -138,7 +138,7 @@ class decoder(nn.Module):
 
     def init_hidden(self, x):
         return torch.zeros([1, x.size(0), self.decoder_hidden_size], 
-                            dtype=None, device=None, requires_grad=True)
+                            dtype=None, device=None, requires_grad=False)
 
 
 # In[ ]:
@@ -157,10 +157,10 @@ class da_rnn:
         self.batch_size = batch_size
 
         self.encoder = encoder(input_size = self.X.shape[1], hidden_size = encoder_hidden_size, T = T,
-                              logger = logger) #.cuda()
+                              logger = logger)
         self.decoder = decoder(encoder_hidden_size = encoder_hidden_size,
                                decoder_hidden_size = decoder_hidden_size,
-                               T = T, logger = logger) #.cuda()
+                               T = T, logger = logger)
 
         if parallel:
             self.encoder = nn.DataParallel(self.encoder)
@@ -242,20 +242,20 @@ class da_rnn:
         self.encoder_optimizer.zero_grad()
         self.decoder_optimizer.zero_grad()
 
-        input_weighted, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=True)) #.cuda()
-        y_pred = self.decoder(input_encoded, torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=True)).squeeze() #.cuda()
+        input_weighted, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=False))
+        y_pred = self.decoder(input_encoded, torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=False)).squeeze()
 
-        y_true = torch.tensor(y_target, dtype=torch.float, device=None, requires_grad=True) #.cuda()
+        y_true = torch.tensor(y_target, dtype=torch.float, device=None, requires_grad=False)
         loss = self.loss_func(y_pred, y_true)
         loss.backward()
 
         self.encoder_optimizer.step()
         self.decoder_optimizer.step()
 
-        # if loss.data[0] < 10:
-        #     self.logger.info("MSE: %s, loss: %s.", loss.data, (y_pred[:, 0] - y_true).pow(2).mean())
+        # if loss.item() < 10:
+        #     self.logger.info("MSE: %s, loss: %s.", loss.item(), (y_pred[:, 0] - y_true).pow(2).mean())
 
-        return loss.data[0]
+        return loss.item()
 
     def predict(self, on_train = False):
         if on_train:
@@ -276,8 +276,8 @@ class da_rnn:
                     X[j, :, :] = self.X[range(batch_idx[j] + self.train_size - self.T, batch_idx[j] + self.train_size - 1), :]
                     y_history[j, :] = self.y[range(batch_idx[j] + self.train_size - self.T,  batch_idx[j]+ self.train_size - 1)]
 
-            y_history = torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=True) #.cuda()
-            _, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=True)) #.cuda()
+            y_history = torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=False)
+            _, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=False))
             y_pred[i:(i + self.batch_size)] = self.decoder(input_encoded, y_history).cpu().data.numpy()[:, 0]
             i += self.batch_size
         return y_pred

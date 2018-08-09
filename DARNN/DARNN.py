@@ -9,15 +9,17 @@
 
 import torch
 from torch import nn
-from torch.autograd import Variable
+#from torch.autograd import Variable
 from torch import optim
 import torch.nn.functional as F
 
-import matplotlib
+#import matplotlib
 # matplotlib.use('Agg')
-get_ipython().magic(u'matplotlib inline')
+#get_ipython().magic(u'matplotlib inline')
 
-import datetime as dt, itertools, pandas as pd, matplotlib.pyplot as plt, numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 
 import utility as util
 
@@ -50,8 +52,10 @@ class encoder(nn.Module):
 
     def forward(self, input_data):
         # input_data: batch_size * T - 1 * input_size
-        input_weighted = Variable(input_data.data.new(input_data.size(0), self.T - 1, self.input_size).zero_())
-        input_encoded = Variable(input_data.data.new(input_data.size(0), self.T - 1, self.hidden_size).zero_())
+        input_weighted = torch.zeros([input_data.size(0), self.T - 1, self.input_size], 
+                                      dtype=None, device=None, requires_grad=True)
+        input_encoded = torch.zeros([input_data.size(0), self.T - 1, self.hidden_size], 
+                                     dtype=None, device=None, requires_grad=True)
         # hidden, cell: initial states with dimention hidden_size
         hidden = self.init_hidden(input_data) # 1 * batch_size * hidden_size
         cell = self.init_hidden(input_data)
@@ -64,7 +68,7 @@ class encoder(nn.Module):
                            input_data.permute(0, 2, 1)), dim = 2) # batch_size * input_size * (2*hidden_size + T - 1)
             # Eqn. 9: Get attention weights
             x = self.attn_linear(x.view(-1, self.hidden_size * 2 + self.T - 1)) # (batch_size * input_size) * 1
-            attn_weights = F.softmax(x.view(-1, self.input_size)) # batch_size * input_size, attn weights with values sum up to 1.
+            attn_weights = F.softmax(x.view(-1, self.input_size), dim = 1) # batch_size * input_size, attn weights with values sum up to 1.
             # Eqn. 10: LSTM
             weighted_input = torch.mul(attn_weights, input_data[:, t, :]) # batch_size * input_size
             # Fix the warning about non-contiguous memory
@@ -80,7 +84,9 @@ class encoder(nn.Module):
 
     def init_hidden(self, x):
         # No matter whether CUDA is used, the returned variable will have the same type as x.
-        return Variable(x.data.new(1, x.size(0), self.hidden_size).zero_()) # dimension 0 is the batch dimension
+        # dimension 0 is the batch dimension
+        return torch.zeros([1, x.size(0), self.hidden_size], 
+                            dtype=None, device=None, requires_grad=True) 
 
 class decoder(nn.Module):
     def __init__(self, encoder_hidden_size, decoder_hidden_size, T, logger):
@@ -114,7 +120,7 @@ class decoder(nn.Module):
             x = torch.cat((hidden.repeat(self.T - 1, 1, 1).permute(1, 0, 2),
                            cell.repeat(self.T - 1, 1, 1).permute(1, 0, 2), input_encoded), dim = 2)
             x = F.softmax(self.attn_layer(x.view(-1, 2 * self.decoder_hidden_size + self.encoder_hidden_size
-                                                )).view(-1, self.T - 1)) # batch_size * T - 1, row sum up to 1
+                                                )).view(-1, self.T - 1), dim = 1) # batch_size * T - 1, row sum up to 1
             # Eqn. 14: compute context vector
             context = torch.bmm(x.unsqueeze(1), input_encoded)[:, 0, :] # batch_size * encoder_hidden_size
             if t < self.T - 1:
@@ -131,7 +137,8 @@ class decoder(nn.Module):
         return y_pred
 
     def init_hidden(self, x):
-        return Variable(x.data.new(1, x.size(0), self.decoder_hidden_size).zero_())
+        return torch.zeros([1, x.size(0), self.decoder_hidden_size], 
+                            dtype=None, device=None, requires_grad=True)
 
 
 # In[ ]:
@@ -145,7 +152,7 @@ class da_rnn:
         self.logger = logger
         self.logger.info("Shape of data: %s.\nMissing in data: %s.", dat.shape, dat.isnull().sum().sum())
 
-        self.X = dat.loc[:, [x for x in dat.columns.tolist() if x != 'NDX']].as_matrix()
+        self.X = dat.loc[:, [x for x in dat.columns.tolist() if x != 'NDX']].values
         self.y = np.array(dat.NDX)
         self.batch_size = batch_size
 
@@ -179,7 +186,7 @@ class da_rnn:
 
         n_iter = 0
 
-        learning_rate = 1.
+        #learning_rate = 1.
 
         for i in range(n_epochs):
             perm_idx = np.random.permutation(self.train_size - self.T)
@@ -223,7 +230,7 @@ class da_rnn:
             if i % 10 == 0:
                 y_train_pred = self.predict(on_train = True)
                 y_test_pred = self.predict(on_train = False)
-                y_pred = np.concatenate((y_train_pred, y_test_pred))
+                #y_pred = np.concatenate((y_train_pred, y_test_pred))
                 plt.figure()
                 plt.plot(range(1, 1 + len(self.y)), self.y, label = "True")
                 plt.plot(range(self.T , len(y_train_pred) + self.T), y_train_pred, label = 'Predicted - Train')
@@ -235,10 +242,10 @@ class da_rnn:
         self.encoder_optimizer.zero_grad()
         self.decoder_optimizer.zero_grad()
 
-        input_weighted, input_encoded = self.encoder(Variable(torch.from_numpy(X).type(torch.FloatTensor))) #.cuda()
-        y_pred = self.decoder(input_encoded, Variable(torch.from_numpy(y_history).type(torch.FloatTensor))).squeeze() #.cuda()
+        input_weighted, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=True)) #.cuda()
+        y_pred = self.decoder(input_encoded, torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=True)).squeeze() #.cuda()
 
-        y_true = Variable(torch.from_numpy(y_target).type(torch.FloatTensor)) #.cuda()
+        y_true = torch.tensor(y_target, dtype=torch.float, device=None, requires_grad=True) #.cuda()
         loss = self.loss_func(y_pred, y_true)
         loss.backward()
 
@@ -269,8 +276,8 @@ class da_rnn:
                     X[j, :, :] = self.X[range(batch_idx[j] + self.train_size - self.T, batch_idx[j] + self.train_size - 1), :]
                     y_history[j, :] = self.y[range(batch_idx[j] + self.train_size - self.T,  batch_idx[j]+ self.train_size - 1)]
 
-            y_history = Variable(torch.from_numpy(y_history).type(torch.FloatTensor)) #.cuda()
-            _, input_encoded = self.encoder(Variable(torch.from_numpy(X).type(torch.FloatTensor))) #.cuda()
+            y_history = torch.tensor(y_history, dtype=torch.float, device=None, requires_grad=True) #.cuda()
+            _, input_encoded = self.encoder(torch.tensor(X, dtype=torch.float, device=None, requires_grad=True)) #.cuda()
             y_pred[i:(i + self.batch_size)] = self.decoder(input_encoded, y_history).cpu().data.numpy()[:, 0]
             i += self.batch_size
         return y_pred

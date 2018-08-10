@@ -67,8 +67,8 @@ class encoder(nn.Module):
                            cell.repeat(self.input_size, 1, 1).permute(1, 0, 2),
                            input_data.permute(0, 2, 1)), dim = 2) # batch_size * input_size * (2*hidden_size + T - 1)
             # Eqn. 9: Get attention weights
-            x = self.attn_linear(x.view(-1, self.hidden_size * 2 + self.T - 1)) # (batch_size * input_size) * 1
-            attn_weights = F.softmax(x.view(-1, self.input_size), dim = 1) # batch_size * input_size, attn weights with values sum up to 1.
+            y = self.attn_linear(x.view(-1, self.hidden_size * 2 + self.T - 1)) # (batch_size * input_size) * 1
+            attn_weights = F.softmax(y.view(-1, self.input_size), dim = 1) # batch_size * input_size, attn weights with values sum up to 1.
             # Eqn. 10: LSTM
             weighted_input = torch.mul(attn_weights, input_data[:, t, :]) # batch_size * input_size
             # Fix the warning about non-contiguous memory

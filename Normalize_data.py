@@ -8,7 +8,7 @@ import pickle
 # working directory
 root_dir = '.'
 
-data_dir = root_dir + '/data/'
+data_dir = root_dir + '/raw_data/'
 file_list = os.listdir(data_dir)
 
 stock = pd.DataFrame()

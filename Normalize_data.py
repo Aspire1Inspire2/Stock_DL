@@ -23,9 +23,8 @@ for i in file_list:
                        names = ['date','prc','vol'],
                        dtype={'date': int, 'prc': np.float32, 'vol':np.float32})
     
-    temp = temp.replace({0:np.nan})
-    if (temp['vol'].isnull().sum() / len(temp) > 0.2 
-        or (temp['prc']<0).sum() / len(temp) > 0.2 
+    temp['prc'] = temp['prc'].replace({0:np.nan})
+    if ( (temp.isnull().sum().sum() + (temp['prc']<0).sum()) / len(temp) > 0.2
         or len(temp) < 252):
         continue
     else:
@@ -35,27 +34,28 @@ for i in file_list:
         temp = temp.drop(columns=['prc'])
         
         #tmp = temp[temp['vol'].notnull()]
-        temp['vol'] = temp['vol'] / temp['vol'][temp['vol'].notnull()].std()
+        #temp['vol'] = temp['vol'] / temp['vol'][temp['vol'].notnull()].std()
         temp['id'] = int(i)
         stock = stock.append(temp)
 
+
+stock["prc_diff"] = stock["prc_diff"].fillna(0)
 stock['date'] = pd.to_datetime(stock['date'], format='%Y%m%d')
         
 stock = stock.set_index(['date','id'])
-
+stock.sort_index(inplace=True)
 
 # Deal with missing data points
-stock["prc_diff"] = stock["prc_diff"].fillna(0)
-stock["prc_diff"][stock["prc_diff"] < -0.999] = 0
-stock_no_zeros = stock[stock['vol'].notnull()]
+# stock["prc_diff"][stock["prc_diff"] < -0.999] = 0
+# stock_no_zeros = stock[stock['vol'].notnull()]
 
-bins = pd.cut(stock_no_zeros["prc_diff"], np.arange(-1.00, 1.01, 0.01))
-stock_grouped = stock_no_zeros['vol'].groupby(bins)
-vol_dist = stock_grouped.agg(['mean', 'count','std'])
+# bins = pd.cut(stock_no_zeros["prc_diff"], np.arange(-1.00, 1.01, 0.01))
+# stock_grouped = stock_no_zeros['vol'].groupby(bins)
+# vol_dist = stock_grouped.agg(['mean', 'count','std'])
 
-stock_tag = pd.cut(stock['prc_diff'], np.arange(-1.00, 1.01, 0.01))
-temp = vol_dist['mean'].loc[stock_tag[stock['vol'].isnull()]]
-stock['vol'][stock['vol'].isnull()] = temp.values
+# stock_tag = pd.cut(stock['prc_diff'], np.arange(-1.00, 1.01, 0.01))
+# temp = vol_dist['mean'].loc[stock_tag[stock['vol'].isnull()]]
+# stock['vol'][stock['vol'].isnull()] = temp.values
 
 with open('normalized_data_6ver.pickle', 'wb') as handle:
     pickle.dump(stock, handle, protocol=pickle.HIGHEST_PROTOCOL)

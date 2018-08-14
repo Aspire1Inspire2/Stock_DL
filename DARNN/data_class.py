@@ -21,7 +21,7 @@ temp = stock_data.loc['2002-12-31':'2012-12-31'].reset_index()
 # From the semi-one-dimension table create a two dim table
 # This two dimension table is used in the Pytorch dataset as input
 temp = temp.pivot(index='DATE', columns='PERMNO', values=['RET','VOL'])
-temp = temp.swaplevel(axis=1).sort_index(axis=1).fillna(0)
+temp = temp.swaplevel(axis=1).sort_index(axis=1)
 
 
 # Ignore the following lines, these are some backup lines
@@ -77,7 +77,7 @@ class StockDataset(Dataset):
         x = self.stock_data.drop(columns=self.ylabel).iloc[begin:end]
         x = x.swaplevel(axis=1)
         x['VOL'] = (x['VOL'] - x['VOL'].mean()) / (x['VOL'].max() - x['VOL'].min())
-        x = x.values
+        x = x.fillna(0).values
         x = x.reshape((self.T, self.tot_num - 1, 2)).transpose(1, 0, 2)
         x = torch.tensor(np.float64(x), 
                           dtype = torch.float64,
@@ -86,13 +86,13 @@ class StockDataset(Dataset):
     
         y = self.stock_data[self.ylabel].iloc[begin:end]
         y['VOL'] = (y['VOL'] - y['VOL'].mean()) / (y['VOL'].max() - y['VOL'].min())
-        y = y.values
+        y = y.fillna(0).values
         y = torch.tensor(np.float64(y), 
                          dtype = torch.float64,
                          requires_grad=False,
                          device = self.device)
         
-        target = self.stock_data[self.ylabel].iloc[end].values[0]
+        target = self.stock_data[self.ylabel].iloc[end].fillna(0).values[0]
         #target = targets.reshape((self.tot_num,2)).transpose()[0]
         target =  torch.tensor(np.float64(target), 
                                dtype = torch.float64,

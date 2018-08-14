@@ -29,9 +29,9 @@ class StockDataset(Dataset):
         self.stock_data = pickle.load(data_file_open)
         self.stock_index = self.stock_data.index
         self.stock_index_unique = np.unique(self.stock_index.values)
-        self.data_tag = random.permutation(self.stock_index_unique)
+        #self.data_tag = random.permutation(self.stock_index_unique)
         self.stock_index_counts = self.stock_index.value_counts()
-        
+        self.data_tag = self.stock_index_counts.index.values
                 
     def __len__(self):
         return len(self.stock_index_unique)

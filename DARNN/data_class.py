@@ -1,39 +1,6 @@
-import pickle
 import numpy as np
-import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
-
-#Hyperparameter
-T = 252 # 252 trading days per year
-BATCH_SIZE = 2 # test batch size
-y_label = 10001
-
-# Assign the path the the Pandas data file here
-data_file_open = open('data/python_stock_data.pickle', 'rb')
-
-#Load the original data
-stock_data = pickle.load(data_file_open)
-
-# Set the research begin and end date:
-temp = stock_data.loc['2002-12-31':'2012-12-31'].reset_index()
-
-# From the semi-one-dimension table create a two dim table
-# This two dimension table is used in the Pytorch dataset as input
-temp = temp.pivot(index='DATE', columns='PERMNO', values=['RET','VOL'])
-temp = temp.swaplevel(axis=1).sort_index(axis=1)
-
-
-# Ignore the following lines, these are some backup lines
-
-# stock_byid = stock_data.swaplevel().sort_index()
-
-# unique_column = np.unique(temp.index.get_level_values(1).values)
-# unique_row = np.unique(temp.index.get_level_values(0).values)
-
-# column_index = pd.MultiIndex.from_product([unique_column,['VOL','RET']])
-# row_index = pd.Index(unique_row, name='date')
-
+from torch.utils.data import Dataset
 
 # Define the Dataset class, to be later used in Pytorch Dataloader
 class StockDataset(Dataset):
@@ -100,25 +67,3 @@ class StockDataset(Dataset):
                                device = self.device)
         
         return x, y, target
-
-# Here is how to use it:
-# 1. Put the processed two dim table
-# 2. Put the number of trading days in lstm input
-# 3. Put the device name
-stock_dataset = StockDataset(temp, T, y_label, 'cpu')
-
-# Let's try out the first sample
-# Compare to temp[10001].iloc[0:253] to see it successfully loaded
-x, y, target = stock_dataset.__getitem__(0)
-print(x.size())
-print(y.size())
-print(target.size())
-
-# Assign the Dataloader to automatically load batched data for you
-stock_dataloader = DataLoader(dataset=stock_dataset, batch_size=BATCH_SIZE,
-                              shuffle=False)
-
-# Lets try out the dataloader
-data_iter = stock_dataloader.__iter__()
-data_iter.__init__(stock_dataloader)
-x_batch, y_batch, target_batch = data_iter.__next__()

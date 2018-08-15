@@ -5,20 +5,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-import utility as util
-
-global logger
-
-util.setup_log()
-#util.setup_path(s3_prefix='prefix',data_dir='data/python_stock_data.pickle')
-logger = util.logger
-
-use_cuda = torch.cuda.is_available()
-logger.info("Is CUDA available? %s.", use_cuda)
-
 
 class encoder(nn.Module):
-    def __init__(self, input_size, hidden_size, T, logger):
+    def __init__(self, input_size, hidden_size, T):
         # input size: number of underlying factors (81)
         # T: number of time steps (10)
         # hidden_size: dimension of the hidden state
@@ -26,8 +15,6 @@ class encoder(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.T = T
-
-        self.logger = logger
 
         self.lstm_layer = nn.LSTM(input_size = input_size, hidden_size = hidden_size, num_layers = 1)
         self.attn_linear = nn.Linear(in_features = 2 * hidden_size + T - 1, out_features = 1)
@@ -70,15 +57,15 @@ class encoder(nn.Module):
         return torch.zeros([1, x.size(0), self.hidden_size],
                             dtype=None, device=None, requires_grad=False)
 
+
+
 class decoder(nn.Module):
-    def __init__(self, encoder_hidden_size, decoder_hidden_size, T, logger):
+    def __init__(self, encoder_hidden_size, decoder_hidden_size, T):
         super(decoder, self).__init__()
 
         self.T = T
         self.encoder_hidden_size = encoder_hidden_size
         self.decoder_hidden_size = decoder_hidden_size
-
-        self.logger = logger
 
         self.attn_layer = nn.Sequential(nn.Linear(2 * decoder_hidden_size + encoder_hidden_size, encoder_hidden_size),
                                          nn.Tanh(), nn.Linear(encoder_hidden_size, 1))
@@ -115,7 +102,6 @@ class decoder(nn.Module):
                 cell = lstm_output[1] # 1 * batch_size * decoder_hidden_size
         # Eqn. 22: final output
         y_pred = self.fc_final(torch.cat((hidden[0], context), dim = 1))
-        # self.logger.info("hidden %s context %s y_pred: %s", hidden[0][0][:10], context[0][:10], y_pred[:10])
         return y_pred
 
     def init_hidden(self, x):

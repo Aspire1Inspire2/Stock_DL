@@ -45,7 +45,7 @@ class StockDataset(Dataset):
         x = x.swaplevel(axis=1)
         x['VOL'] = (x['VOL'] - x['VOL'].mean()) / (x['VOL'].max() - x['VOL'].min())
         x = x.fillna(0).values
-        x = x.reshape((self.T, self.tot_num - 1, 2)).transpose(1, 0, 2)
+        #x = x.reshape((self.T, self.tot_num - 1, 2)).transpose(1, 0, 2)
         x = torch.tensor(np.float64(x), 
                           dtype = torch.float64,
                           requires_grad=False,

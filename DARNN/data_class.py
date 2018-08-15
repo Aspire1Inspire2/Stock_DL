@@ -10,7 +10,7 @@ BATCH_SIZE = 2 # test batch size
 y_label = 10001
 
 # Assign the path the the Pandas data file here
-data_file_open = open('python_stock_data.pickle', 'rb')
+data_file_open = open('data/python_stock_data.pickle', 'rb')
 
 #Load the original data
 stock_data = pickle.load(data_file_open)
@@ -51,20 +51,20 @@ class StockDataset(Dataset):
         self.T = T
         self.ylabel = ylabel
         self.device = device
-        
+
         self.stock_data = pd_data
         self.total_time = len(self.stock_data)
         self.tot_num = len(np.unique(pd_data.columns.get_level_values(0).values))
-                
+
     def __len__(self):
         return self.total_time - self.T + 1
 
     def __getitem__(self, idx):
         """
-        Return a tuple, 
+        Return a tuple,
         the first result is the prediction input data
         the second result is the larning target value
-        
+
         The input data is pytorch tensor with the following shape:
         (number of stocks in the sample, number of timesteps, 2)
         In the last dimension, there are two numbers, 

@@ -23,12 +23,11 @@ from data_class import StockDataset
 global logger
 
 util.setup_log()
-util.setup_path(s3_prefix='prefix',data_dir='~/nasdaq100')
+#util.setup_path(s3_prefix='prefix',data_dir='data/python_stock_data.pickle')
 logger = util.logger
 
 use_cuda = torch.cuda.is_available()
 logger.info("Is CUDA available? %s.", use_cuda)
-
 
 
 class encoder(nn.Module):
@@ -48,9 +47,9 @@ class encoder(nn.Module):
 
     def forward(self, input_data):
         # input_data: batch_size * T - 1 * input_size
-        input_weighted = torch.zeros([input_data.size(0), self.T - 1, self.input_size], 
+        input_weighted = torch.zeros([input_data.size(0), self.T - 1, self.input_size],
                                       dtype=None, device=None, requires_grad=False)
-        input_encoded = torch.zeros([input_data.size(0), self.T - 1, self.hidden_size], 
+        input_encoded = torch.zeros([input_data.size(0), self.T - 1, self.hidden_size],
                                      dtype=None, device=None, requires_grad=False)
         # hidden, cell: initial states with dimention hidden_size
         hidden = self.init_hidden(input_data) # 1 * batch_size * hidden_size
@@ -63,8 +62,8 @@ class encoder(nn.Module):
                            cell.repeat(self.input_size, 1, 1).permute(1, 0, 2),
                            input_data.permute(0, 2, 1)), dim = 2) # batch_size * input_size * (2*hidden_size + T - 1)
             # Eqn. 9: Get attention weights
-            x = self.attn_linear(x.view(-1, self.hidden_size * 2 + self.T - 1)) # (batch_size * input_size) * 1
-            attn_weights = F.softmax(x.view(-1, self.input_size), dim = 1) # batch_size * input_size, attn weights with values sum up to 1.
+            y = self.attn_linear(x.view(-1, self.hidden_size * 2 + self.T - 1)) # (batch_size * input_size) * 1
+            attn_weights = F.softmax(y.view(-1, self.input_size), dim = 1) # batch_size * input_size, attn weights with values sum up to 1.
             # Eqn. 10: LSTM
             weighted_input = torch.mul(attn_weights, input_data[:, t, :]) # batch_size * input_size
             # Fix the warning about non-contiguous memory
@@ -81,8 +80,8 @@ class encoder(nn.Module):
     def init_hidden(self, x):
         # No matter whether CUDA is used, the returned variable will have the same type as x.
         # dimension 0 is the batch dimension
-        return torch.zeros([1, x.size(0), self.hidden_size], 
-                            dtype=None, device=None, requires_grad=False) 
+        return torch.zeros([1, x.size(0), self.hidden_size],
+                            dtype=None, device=None, requires_grad=False)
 
 class decoder(nn.Module):
     def __init__(self, encoder_hidden_size, decoder_hidden_size, T, logger):
@@ -133,7 +132,7 @@ class decoder(nn.Module):
         return y_pred
 
     def init_hidden(self, x):
-        return torch.zeros([1, x.size(0), self.decoder_hidden_size], 
+        return torch.zeros([1, x.size(0), self.decoder_hidden_size],
                             dtype=None, device=None, requires_grad=False)
 
 
@@ -142,16 +141,16 @@ class decoder(nn.Module):
 #             learning_rate = 0.01, batch_size = 128, parallel = True, debug = False):
 parser = argparse.ArgumentParser('Train the model using MNIST dataset.')
 parser.add_argument('--data', default=
-                    './normalized_data_ver5.pickle', 
+                    'data/python_stock_data.pickle',
                     required=False,
                     help='The path to save MNIST dataset, or '
                          'the path the dataset is located')
-parser.add_argument('--model', default='lstm', required=False, 
+parser.add_argument('--model', default='lstm', required=False,
                     choices=['lstm', 'bnlstm'],
                     help='The name of a model to use')
 parser.add_argument('--save', default='.', required=False,
                     help='The path to save model files')
-parser.add_argument('--hidden-size', default=3, required=False, 
+parser.add_argument('--hidden-size', default=3, required=False,
                     type=int,
                     help='The number of hidden units')
 parser.add_argument('--pmnist', default=False, action='store_true',
@@ -175,14 +174,14 @@ max_iter = args.max_iter
 use_gpu = args.gpu
 
 torch.manual_seed(1)
- 
+
 
 device = torch.device("cuda:0" if use_gpu else "cpu")
 if use_gpu:
     torch.set_default_tensor_type(torch.cuda.DoubleTensor)
 else:
     torch.set_default_tensor_type(torch.DoubleTensor)
-    
+
 # List hyperparameters here
 TRAIN_SIZE = 1
 #TEST_SIZE = 2
@@ -231,7 +230,7 @@ train_size = int(X.shape[0] * 0.7)
 y = y - np.mean(y[:train_size]) # Question: why Adam requires data to be normalized?
 logger.info("Training size: %d.", train_size)
 
-    
+
 def train(self, n_epochs = 10):
     iter_per_epoch = int(np.ceil(self.train_size * 1. / self.batch_size))
     logger.info("Iterations per epoch: %3.3f ~ %d.", self.train_size * 1. / self.batch_size, iter_per_epoch)
@@ -364,5 +363,3 @@ def predict(self, on_train = False):
 #plt.plot(model.y[model.train_size:], label = "True")
 #plt.legend(loc = 'upper left')
 #plt.show()
-
-

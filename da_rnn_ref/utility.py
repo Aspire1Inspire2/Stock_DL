@@ -25,7 +25,7 @@ def setup_log(tag = 'VOC_TOPICS'):
     # logger.handlers = []
     logger.addHandler(ch)
 
-def setup_path(s3_prefix="xxx", data_dir="xxx"):
+def setup_path(s3_prefix, data_dir):
     global local_data_dir, s3_input_prefix, s3_bucket
     s3_bucket = 's3://xxxxxx'
     local_data_dir = data_dir

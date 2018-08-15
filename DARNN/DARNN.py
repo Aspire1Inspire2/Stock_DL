@@ -23,7 +23,7 @@ from data_class import StockDataset
 global logger
 
 util.setup_log()
-util.setup_path(s3_prefix='prefix',data_dir='~/nasdaq100')
+#util.setup_path(s3_prefix='prefix',data_dir='data/python_stock_data.pickle')
 logger = util.logger
 
 use_cuda = torch.cuda.is_available()
@@ -141,7 +141,7 @@ class decoder(nn.Module):
 #             learning_rate = 0.01, batch_size = 128, parallel = True, debug = False):
 parser = argparse.ArgumentParser('Train the model using MNIST dataset.')
 parser.add_argument('--data', default=
-                    './normalized_data_ver5.pickle',
+                    'data/python_stock_data.pickle',
                     required=False,
                     help='The path to save MNIST dataset, or '
                          'the path the dataset is located')

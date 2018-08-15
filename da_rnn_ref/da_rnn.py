@@ -5,7 +5,6 @@
 # source: https://arxiv.org/pdf/1704.02971.pdf
 # pytorch example: http://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
 
-# In[1]:
 
 import torch
 from torch import nn
@@ -30,8 +29,6 @@ logger = util.logger
 use_cuda = torch.cuda.is_available()
 logger.info("Is CUDA available? %s.", use_cuda)
 
-
-# In[2]:
 
 class encoder(nn.Module):
     def __init__(self, input_size, hidden_size, T, logger):

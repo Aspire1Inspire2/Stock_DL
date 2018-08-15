@@ -9,7 +9,7 @@ BATCH_SIZE = 2 # test batch size
 
 
 # Assign the path the the Pandas data file here
-data_file_open = open('normalized_data_6ver.pickle', 'rb')
+data_file_open = open('data/normalized_data_6ver.pickle', 'rb')
 
 #Load the original data
 stock_data = pickle.load(data_file_open)
@@ -49,40 +49,40 @@ class StockDataset(Dataset):
         """
         self.T = T
         self.device = device
-        
+
         self.stock_data = pd_data
         self.total_time = len(self.stock_data)
         self.tot_num = len(np.unique(pd_data.columns.get_level_values(0).values))
-                
+
     def __len__(self):
         return self.total_time - self.T + 1
 
     def __getitem__(self, idx):
         """
-        Return a tuple, 
+        Return a tuple,
         the first result is the prediction input data
         the second result is the larning target value
-        
+
         The input data is pytorch tensor with the following shape:
         (number of stocks in the sample, number of timesteps, 2)
-        In the last dimension, there are two numbers, 
+        In the last dimension, there are two numbers,
         the first number is price change ('prc_diff')
         the second number is volumn ('vol')
         """
         begin = idx
         end = idx + self.T
-        
+
         sample = self.stock_data.iloc[begin:end].values
         sample = sample.reshape((self.T,self.tot_num,2)).transpose(1,0,2)
-        
+
         targets = self.stock_data.iloc[end].values
         targets = targets.reshape((self.tot_num,2)).transpose()[0]
-        
-        return (torch.tensor(np.float64(sample), 
+
+        return (torch.tensor(np.float64(sample),
                              dtype = torch.float64,
                              requires_grad=False,
-                             device = self.device), 
-                torch.tensor(np.float64(targets), 
+                             device = self.device),
+                torch.tensor(np.float64(targets),
                              dtype = torch.float64,
                              requires_grad=False,
                              device = self.device))

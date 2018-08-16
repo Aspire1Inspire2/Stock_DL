@@ -7,48 +7,73 @@ import torch.nn.functional as F
 
 
 class encoder(nn.Module):
-    def __init__(self, input_size, hidden_size, T):
+    def __init__(self, n_stock, batch_size, hidden_size, T, device):
         # input size: number of underlying factors (81)
         # T: number of time steps (10)
         # hidden_size: dimension of the hidden state
         super(encoder, self).__init__()
-        self.input_size = input_size
+        self.n_stock = n_stock
+        self.n_fea = n_stock * 2 # number of features
+        self.batch_size = batch_size
         self.hidden_size = hidden_size
         self.T = T
-
-        self.lstm_layer = nn.LSTM(input_size = input_size, hidden_size = hidden_size, num_layers = 1)
-        self.attn_linear = nn.Linear(in_features = 2 * hidden_size + T - 1, out_features = 1)
+        self.device = device
+        
+        # hidden, cell: initial states with dimention hidden_size
+        self.hidden = torch.rand([batch_size, hidden_size],
+                            dtype=None, device=None, requires_grad=False)
+        self.cell = torch.rand([batch_size, hidden_size],
+                            dtype=None, device=None, requires_grad=False)
+        
+        self.perceptron = nn.Sequential(
+            nn.Linear(in_features = T + 2 * hidden_size, out_features = T),
+            nn.Tanh(),
+            nn.Linear(in_features = T, out_features = 1)
+        )
+        
+        self.lstm = nn.LSTMCell(input_size = self.n_fea, hidden_size = hidden_size)
+        self.attn_linear = nn.Linear(in_features = 2, out_features = 1)
 
     def forward(self, input_data):
-        # input_data: batch_size * T - 1 * input_size
-        input_weighted = torch.zeros([input_data.size(0), self.T - 1, self.input_size],
-                                      dtype=None, device=None, requires_grad=False)
-        input_encoded = torch.zeros([input_data.size(0), self.T - 1, self.hidden_size],
-                                     dtype=None, device=None, requires_grad=False)
-        # hidden, cell: initial states with dimention hidden_size
-        hidden = self.init_hidden(input_data) # 1 * batch_size * hidden_size
-        cell = self.init_hidden(input_data)
-        # hidden.requires_grad = False
-        # cell.requires_grad = False
-        for t in range(self.T - 1):
+        # input_data: batch_size * T - 1 * n_stock
+        input_weighted = torch.zeros([self.batch_size, self.T, self.n_fea],
+                                      dtype=None, device=self.device, requires_grad=False)
+        input_encoded = torch.zeros([self.batch_size, self.T, self.hidden_size],
+                                     dtype=None, device=self.device, requires_grad=False)
+        
+        
+        for t in range(self.T):
+            
+            #Eqn. 2
+            (h0, c0) = (self.hidden, self.cell)
+            h1, c1 =  self.lstm(input_data[:, t, :], (h0, c0))
+            
             # Eqn. 8: concatenate the hidden states with each predictor
-            x = torch.cat((hidden.repeat(self.input_size, 1, 1).permute(1, 0, 2),
-                           cell.repeat(self.input_size, 1, 1).permute(1, 0, 2),
-                           input_data.permute(0, 2, 1)), dim = 2) # batch_size * input_size * (2*hidden_size + T - 1)
+            x = torch.cat((h1.unsqueeze(dim=1) \
+                             .repeat(1, self.n_fea, 1),
+                           c1.unsqueeze(dim=1) \
+                             .repeat(1, self.n_fea, 1),
+                           input_data.transpose(1,2)), dim = 2)
+            
+            e_t = self.perceptron(x).squeeze(dim=2)
+            e_t = self.attn_linear(e_t.view(self.batch_size, self.n_stock, 2))
+            e_t = e_t.squeeze(dim=2)
+            
             # Eqn. 9: Get attention weights
-            y = self.attn_linear(x.view(-1, self.hidden_size * 2 + self.T - 1)) # (batch_size * input_size) * 1
-            attn_weights = F.softmax(y.view(-1, self.input_size), dim = 1) # batch_size * input_size, attn weights with values sum up to 1.
+            attn_weights = F.softmax(e_t, dim = 1) # batch_size * n_stock, attn weights with values sum up to 1.
+            attn_weights = attn_weights.transpose(0,1).repeat(1, 2).view(self.n_fea, self.batch_size).transpose(0,1)
+            
             # Eqn. 10: LSTM
-            weighted_input = torch.mul(attn_weights, input_data[:, t, :]) # batch_size * input_size
+            weighted_input = torch.mul(attn_weights, input_data[:, t, :]) # batch_size * n_stock
             # Fix the warning about non-contiguous memory
             # see https://discuss.pytorch.org/t/dataparallel-issue-with-flatten-parameter/8282
-            self.lstm_layer.flatten_parameters()
-            _, lstm_states = self.lstm_layer(weighted_input.unsqueeze(0), (hidden, cell))
-            hidden = lstm_states[0]
-            cell = lstm_states[1]
+            #self.lstm.flatten_parameters()
+            
+            # Eqn. 11
+            (self.hidden, self.cell) = self.lstm(weighted_input, (h0, c0))
             # Save output
             input_weighted[:, t, :] = weighted_input
-            input_encoded[:, t, :] = hidden
+            input_encoded[:, t, :] = self.hidden
         return input_weighted, input_encoded
 
     def init_hidden(self, x):

@@ -45,7 +45,7 @@ args = parser.parse_args()
 
 #Hyperparameter
 T = 252 # 252 trading days per year
-y_label = 10001 # The stock PERMNO label, 
+y_label = 10001 # The stock PERMNO label,
                 #this is the stock to be studied
 DATA_PATH = args.data
 model_name = args.model
@@ -71,20 +71,20 @@ if use_gpu:
 else:
     torch.set_default_tensor_type(torch.DoubleTensor)
 
-##Load the original data
-#stock_data = pickle.load(open(DATA_PATH, 'rb'))
+# #Load the original data
+# stock_data = pickle.load(open(DATA_PATH, 'rb'))
 #
-## Set the research begin and end date:
-#temp = stock_data.loc['2002-12-31':'2012-12-31'].reset_index()
+# # Set the research begin and end date:
+# temp = stock_data.loc['2002-12-31':'2012-12-31'].reset_index()
 #
-## From the semi-one-dimension table create a two dim table
-## This two dimension table is used in the Pytorch dataset as input
-#temp = temp.pivot(index='DATE', columns='PERMNO', values=['RET','VOL'])
-#temp = temp.swaplevel(axis=1).sort_index(axis=1)
+# # From the semi-one-dimension table create a two dim table
+# # This two dimension table is used in the Pytorch dataset as input
+# temp = temp.pivot(index='DATE', columns='PERMNO', values=['RET','VOL'])
+# temp = temp.swaplevel(axis=1).sort_index(axis=1)
 #
-#with open('data/input.pickle', 'wb') as handle:
+# with open('data/input.pickle', 'wb') as handle:
 #    pickle.dump(temp, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    
+
 # Load the processed data to accerlate debugging
 # Before using this line, use the above line to dump the data.
 temp = pickle.load(open('data/input.pickle', 'rb'))
@@ -113,9 +113,12 @@ data_iter.__init__(stock_dataloader)
 x_batch, y_batch, target_batch = data_iter.__next__()
 
 
+print("encoder input size: " + str(x_batch.size(2)))
+print("hidden size: " + str(HIDDEN_SIZE))
 
-encoder = encoder(input_size = x_batch.size(2), 
-                  hidden_size = HIDDEN_SIZE, 
+
+encoder = encoder(input_size = x_batch.size(2),
+                  hidden_size = HIDDEN_SIZE,
                   T = T)
 decoder = decoder(encoder_hidden_size = HIDDEN_SIZE,
                   decoder_hidden_size = HIDDEN_SIZE,

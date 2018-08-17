@@ -28,12 +28,12 @@ parser.add_argument('--model', default='lstm', required=False,
                     help='The name of a model to use')
 parser.add_argument('--save', default='.', required=False,
                     help='The path to save model files')
-parser.add_argument('--hidden-size', default=3, required=False,
+parser.add_argument('--hidden-size', default=2, required=False,
                     type=int,
                     help='The number of hidden units')
 parser.add_argument('--pmnist', default=False, action='store_true',
                     help='If set, it uses permutated-MNIST dataset')
-parser.add_argument('--batch-size', default=2, required=False, type=int,
+parser.add_argument('--batch-size', default=1, required=False, type=int,
                     help='The size of each batch')
 parser.add_argument('--n_epochs', default=3, required=False, type=int,
                     help='The maximum iteration count')
@@ -112,11 +112,13 @@ data_iter = stock_dataloader.__iter__()
 data_iter.__init__(stock_dataloader)
 x_batch, y_batch, target_batch = data_iter.__next__()
 
+n_stock = int(x_batch.size(2)/2)
 
-
-encoder = encoder(input_size = x_batch.size(2), 
+encoder = encoder(n_stock = n_stock, 
+                  batch_size = BATCH_SIZE,
                   hidden_size = HIDDEN_SIZE, 
-                  T = T)
+                  T = T,
+                  device = device)
 decoder = decoder(encoder_hidden_size = HIDDEN_SIZE,
                   decoder_hidden_size = HIDDEN_SIZE,
                   T = T)
@@ -146,10 +148,10 @@ encoder_optimizer.zero_grad()
 decoder_optimizer.zero_grad()
 
 input_weighted, input_encoded = encoder(x_batch)
-y_pred = decoder(input_encoded, y_batch).squeeze()
-
-loss = loss_func(y_pred, target_batch)
-loss.backward()
-
-encoder_optimizer.step()
-decoder_optimizer.step()
+#y_pred = decoder(input_encoded, y_batch).squeeze()
+#
+#loss = loss_func(y_pred, target_batch)
+#loss.backward()
+#
+#encoder_optimizer.step()
+#decoder_optimizer.step()

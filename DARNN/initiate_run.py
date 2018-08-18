@@ -9,6 +9,7 @@ from torch import optim
 #import matplotlib.pyplot as plt
 
 import pickle
+import numpy as np
 
 from torch.utils.data import DataLoader
 
@@ -28,12 +29,12 @@ parser.add_argument('--model', default='lstm', required=False,
                     help='The name of a model to use')
 parser.add_argument('--save', default='.', required=False,
                     help='The path to save model files')
-parser.add_argument('--hidden-size', default=2, required=False,
+parser.add_argument('--hidden-size', default=64, required=False,
                     type=int,
                     help='The number of hidden units')
 parser.add_argument('--pmnist', default=False, action='store_true',
                     help='If set, it uses permutated-MNIST dataset')
-parser.add_argument('--batch-size', default=1, required=False, type=int,
+parser.add_argument('--batch-size', default=2, required=False, type=int,
                     help='The size of each batch')
 parser.add_argument('--n_epochs', default=3, required=False, type=int,
                     help='The maximum iteration count')
@@ -44,8 +45,8 @@ args = parser.parse_args()
 
 
 #Hyperparameter
-T = 252 # 252 trading days per year
-y_label = 10001 # The stock PERMNO label,
+T = 252 # 252 trading days per year, 126 per half year
+y_label = 88331 # The stock PERMNO label, 
                 #this is the stock to be studied
 DATA_PATH = args.data
 model_name = args.model
@@ -88,6 +89,18 @@ else:
 # Load the processed data to accerlate debugging
 # Before using this line, use the above line to dump the data.
 temp = pickle.load(open('data/input.pickle', 'rb'))
+
+## Use the following block to select only part of the whole input data
+#columns = np.unique(temp.columns.get_level_values(0).values)
+#trading_value = pickle.load(open('data/trading_value.pickle', 'rb'))
+#trading_value = trading_value.loc[columns] \
+#                       .sort_values('AMNT', ascending = False)
+#ranking = trading_value.index \
+#                       .get_level_values(0) \
+#                       .values
+#cutoff = (trading_value.values.squeeze() / trading_value.iloc[0].values) > 1e-3
+#keep = ranking[cutoff]
+#temp = temp[keep]
 
 
 # Here is how to use it:
@@ -151,7 +164,7 @@ n_iter = 0
 encoder_optimizer.zero_grad()
 decoder_optimizer.zero_grad()
 
-input_weighted, input_encoded = encoder(x_batch)
+input_encoded = encoder(x_batch)
 #y_pred = decoder(input_encoded, y_batch).squeeze()
 #
 #loss = loss_func(y_pred, target_batch)

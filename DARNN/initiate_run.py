@@ -78,23 +78,26 @@ if USE_GPU:
 else:
     torch.set_default_tensor_type(torch.DoubleTensor)
 
-##Load the original data
-#stock_data = pickle.load(open(DATA_PATH, 'rb'))
-#
-## Set the research begin and end date:
-#temp = stock_data.loc['2002-12-31':'2012-12-31'].reset_index()
-#
-## From the semi-one-dimension table create a two dim table
-## This two dimension table is used in the Pytorch dataset as input
-#temp = temp.pivot(index='DATE', columns='PERMNO', values=['RET','VOL'])
-#temp = temp.swaplevel(axis=1).sort_index(axis=1)
-#
+#Load the original data
+stock_data = pickle.load(open(DATA_PATH, 'rb'))
+
+# Set the research begin and end date:
+temp = stock_data.loc['2002-12-31':'2012-12-31'].reset_index()
+
+# From the semi-one-dimension table create a two dim table
+# This two dimension table is used in the Pytorch dataset as input
+temp = temp.pivot(index='DATE', columns='PERMNO', values=['RET','VOL'])
+temp = temp.swaplevel(axis=1).sort_index(axis=1)
+
+train = temp.loc['2002-12-31':'2011-12-31']
+test = temp.loc['2010-12-31':'2012-12-31']
+
 #with open('data/input.pickle', 'wb') as handle:
 #    pickle.dump(temp, handle, protocol=pickle.HIGHEST_PROTOCOL)
     
-# Load the processed data to accerlate debugging
-# Before using this line, use the above line to dump the data.
-temp = pickle.load(open('data/input.pickle', 'rb'))
+## Load the processed data to accerlate debugging
+## Before using this line, use the above line to dump the data.
+#temp = pickle.load(open('data/input.pickle', 'rb'))
 
 ## Use the following block to select only part of the whole input data
 #columns = np.unique(temp.columns.get_level_values(0).values)
@@ -113,7 +116,8 @@ temp = pickle.load(open('data/input.pickle', 'rb'))
 # 1. Input the processed two dim table "temp"
 # 2. Input the number of trading days in lstm input
 # 3. Input the device name
-stock_dataset = StockDataset(temp, T, y_label, device)
+train_dataset = StockDataset(train, T, y_label, device)
+test_dataset = StockDataset(test, T, y_label, device)
 
 # Let's try out the first sample
 # Compare to temp[10001].iloc[0:253] to see it successfully loaded
@@ -123,15 +127,12 @@ stock_dataset = StockDataset(temp, T, y_label, device)
 #print(target.size())
 
 # Assign the Dataloader to automatically load batched data for you
-stock_dataloader = DataLoader(dataset=stock_dataset, batch_size=BATCH_SIZE,
+train_dataloader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE,
+                              shuffle=False)
+test_dataloader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE,
                               shuffle=False)
 
-# Lets try out the dataloader
-data_iter = stock_dataloader.__iter__()
-data_iter.__init__(stock_dataloader)
-x_batch, y_batch, target_batch = data_iter.__next__()
-
-n_stock = int(x_batch.size(2)/2)
+n_stock = int(temp.shape[1] / 2 - 1)
 
 encoder = encoder(n_stock = n_stock, 
                   batch_size = MINIBATCH_SIZE,
@@ -159,17 +160,34 @@ decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decode
 
 loss_func = nn.MSELoss()
 
+## Lets try out the dataloader
+#data_iter = train_dataloader.__iter__()
+#data_iter.__init__(train_dataloader)
+#x_batch, y_batch, target_batch = data_iter.__next__()
 for n_iter in range(N_EPOCHS):
+    print(n_iter)
+    loss_epoch = []
+    for x_batch, y_batch, target_batch in train_dataloader:
+        
+        encoder_optimizer.zero_grad()
+        decoder_optimizer.zero_grad()
+        
+        exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
+        y_pred = decoder(exogenous_encoded, y_incoded)
+        
+        loss = loss_func(y_pred, target_batch)
+        print(loss)
+        loss_epoch.append(loss)
+        loss.backward()
+        
+        encoder_optimizer.step()
+        decoder_optimizer.step()
     
-    encoder_optimizer.zero_grad()
-    decoder_optimizer.zero_grad()
-    
-    exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
-    y_pred = decoder(exogenous_encoded, y_incoded)
-    
-    loss = loss_func(y_pred, target_batch)
-    print(loss)
-    loss.backward()
-    
-    encoder_optimizer.step()
-    decoder_optimizer.step()
+    print(loss_epoch)
+
+with torch.no_grad():
+    for x_batch, y_batch, target_batch in test_dataloader:
+        exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
+        y_pred = decoder(exogenous_encoded, y_incoded)
+        loss = loss_func(y_pred, target_batch)
+        print(loss)

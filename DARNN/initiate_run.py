@@ -45,7 +45,7 @@ args = parser.parse_args()
 
 
 #Hyperparameter
-T = 126 # 252 trading days per year, 126 is half year
+T = 252 # 252 trading days per year, 126 per half year
 y_label = 88331 # The stock PERMNO label, 
                 #this is the stock to be studied
 DATA_PATH = args.data
@@ -90,17 +90,17 @@ else:
 # Before using this line, use the above line to dump the data.
 temp = pickle.load(open('data/input.pickle', 'rb'))
 
-
-columns = np.unique(temp.columns.get_level_values(0).values)
-trading_value = pickle.load(open('data/trading_value.pickle', 'rb'))
-trading_value = trading_value.loc[columns] \
-                       .sort_values('AMNT', ascending = False)
-ranking = trading_value.index \
-                       .get_level_values(0) \
-                       .values
-cutoff = (trading_value.values.squeeze() / trading_value.iloc[0].values) > 1e-3
-keep = ranking[cutoff]
-temp = temp[keep]
+## Use the following block to select only part of the whole input data
+#columns = np.unique(temp.columns.get_level_values(0).values)
+#trading_value = pickle.load(open('data/trading_value.pickle', 'rb'))
+#trading_value = trading_value.loc[columns] \
+#                       .sort_values('AMNT', ascending = False)
+#ranking = trading_value.index \
+#                       .get_level_values(0) \
+#                       .values
+#cutoff = (trading_value.values.squeeze() / trading_value.iloc[0].values) > 1e-3
+#keep = ranking[cutoff]
+#temp = temp[keep]
 
 
 # Here is how to use it:

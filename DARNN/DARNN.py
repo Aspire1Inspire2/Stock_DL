@@ -23,19 +23,18 @@ class encoder(nn.Module):
         self.T = T
         self.device = device
         
-        # hidden, cell, attn_weights: initial states with dimention hidden_size
-        self.hidden = torch.rand([1, batch_size, hidden_size],
-                            dtype=None, device=device, requires_grad=False)
-        self.cell = torch.rand([1, batch_size, hidden_size],
-                            dtype=None, device=device, requires_grad=False)
+        
         self.attn_weights = nn.Parameter(torch.rand([batch_size, n_stock],
                             dtype=None, device=device, requires_grad=False))
         
-        self.lstm = nn.LSTM(input_size = self.n_fea, 
-                            hidden_size = hidden_size,
-                            batch_first = True)
+        self.y_encode = nn.LSTM(input_size = 2, 
+                                   hidden_size = hidden_size,
+                                   batch_first = True)
+        self.exogenous_encode = nn.LSTM(input_size = self.n_fea, 
+                                        hidden_size = hidden_size,
+                                        batch_first = True)
 
-    def forward(self, input_data):
+    def forward(self, input_data, y_history):
         alpha = F.softmax(self.attn_weights, dim = 1) * self.n_stock 
         alpha = alpha.transpose(0,1) \
                      .repeat(1, 2) \
@@ -45,57 +44,50 @@ class encoder(nn.Module):
                      .repeat(1, self.T, 1)
         weighted_input = torch.mul(alpha, input_data)
         
-        input_encoded, (_, _) = self.lstm(weighted_input, (self.hidden, self.cell))
+        y_incoded, (_, _) = self.y_encode(y_history)
         
-        return input_encoded
+        exogenous_encoded, (_, _) = self.exogenous_encode(weighted_input)
+        
+        return exogenous_encoded, y_incoded
 
 
 
 class decoder(nn.Module):
-    def __init__(self, encoder_hidden_size, decoder_hidden_size, T):
+    def __init__(self, batch_size, encoder_hidden_size, 
+                 decoder_hidden_size, T, device):
         super(decoder, self).__init__()
-
+        
+        self.batch_size = batch_size
         self.T = T
         self.encoder_hidden_size = encoder_hidden_size
         self.decoder_hidden_size = decoder_hidden_size
-
-        self.attn_layer = nn.Sequential(nn.Linear(2 * decoder_hidden_size + encoder_hidden_size, encoder_hidden_size),
-                                         nn.Tanh(), nn.Linear(encoder_hidden_size, 1))
-        self.lstm_layer = nn.LSTM(input_size = 1, hidden_size = decoder_hidden_size)
-        self.fc = nn.Linear(encoder_hidden_size + 1, 1)
-        self.fc_final = nn.Linear(decoder_hidden_size + encoder_hidden_size, 1)
-
-        self.fc.weight.data.normal_()
-
-    def forward(self, input_encoded, y_history):
-        # input_encoded: batch_size * T - 1 * encoder_hidden_size
-        # y_history: batch_size * (T-1)
-        # Initialize hidden and cell, 1 * batch_size * decoder_hidden_size
-        hidden = self.init_hidden(input_encoded)
-        cell = self.init_hidden(input_encoded)
-        # hidden.requires_grad = False
-        # cell.requires_grad = False
-        for t in range(self.T - 1):
-            # Eqn. 12-13: compute attention weights
-            ## batch_size * T * (2*decoder_hidden_size + encoder_hidden_size)
-            x = torch.cat((hidden.repeat(self.T - 1, 1, 1).permute(1, 0, 2),
-                           cell.repeat(self.T - 1, 1, 1).permute(1, 0, 2), input_encoded), dim = 2)
-            x = F.softmax(self.attn_layer(x.view(-1, 2 * self.decoder_hidden_size + self.encoder_hidden_size
-                                                )).view(-1, self.T - 1), dim = 1) # batch_size * T - 1, row sum up to 1
-            # Eqn. 14: compute context vector
-            context = torch.bmm(x.unsqueeze(1), input_encoded)[:, 0, :] # batch_size * encoder_hidden_size
-            if t < self.T - 1:
-                # Eqn. 15
-                y_tilde = self.fc(torch.cat((context, y_history[:, t].unsqueeze(1)), dim = 1)) # batch_size * 1
-                # Eqn. 16: LSTM
-                self.lstm_layer.flatten_parameters()
-                _, lstm_output = self.lstm_layer(y_tilde.unsqueeze(0), (hidden, cell))
-                hidden = lstm_output[0] # 1 * batch_size * decoder_hidden_size
-                cell = lstm_output[1] # 1 * batch_size * decoder_hidden_size
-        # Eqn. 22: final output
-        y_pred = self.fc_final(torch.cat((hidden[0], context), dim = 1))
+        self.device = device
+        
+        self.attn_layer = nn.Parameter(torch.rand([batch_size, T],
+                            dtype=None, device=device, requires_grad=False))
+        
+        
+        self.lstm_decode = nn.LSTM(input_size = encoder_hidden_size * 2, 
+                                   hidden_size = decoder_hidden_size,
+                                   bidirectional = True,
+                                   batch_first = True)
+        self.final = nn.Sequential(
+                nn.Linear(decoder_hidden_size * 2, 1),
+                nn.Tanh()
+                )
+        
+    def forward(self, exogenous_encoded, y_incoded):
+        beta = F.softmax(self.attn_layer, dim = 1) * self.T 
+        beta = beta.unsqueeze(dim=2) \
+                   .repeat(1, 1, self.encoder_hidden_size * 2)
+        
+        y_tilde = torch.cat((exogenous_encoded, y_incoded), dim=2)
+        context = torch.mul(beta, y_tilde)
+        
+        _, (hn, _) = self.lstm_decode(context)
+        
+        hn = hn.transpose(0, 1).contiguous()
+        hn = hn.view(self.batch_size, self.decoder_hidden_size * 2)
+        y_pred = self.final(hn).squeeze()
+        
         return y_pred
-
-    def init_hidden(self, x):
-        return torch.zeros([1, x.size(0), self.decoder_hidden_size],
-                            dtype=None, device=None, requires_grad=False)

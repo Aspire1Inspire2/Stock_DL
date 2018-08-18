@@ -36,13 +36,15 @@ parser.add_argument('--pmnist', default=False, action='store_true',
                     help='If set, it uses permutated-MNIST dataset')
 parser.add_argument('--batch-size', default=2, required=False, type=int,
                     help='The size of each batch')
-parser.add_argument('--n_epochs', default=3, required=False, type=int,
+parser.add_argument('--n_epochs', default=30, required=False, type=int,
                     help='The maximum iteration count')
 parser.add_argument('--gpu', default=False, action='store_true',
                     help='The value specifying whether to use GPU')
+parser.add_argument('--parallel', default=False, action='store_true',
+                    help='The value specifying whether to use parallel GPU')
 args = parser.parse_args()
 
-
+torch.manual_seed(1)
 
 #Hyperparameter
 T = 252 # 252 trading days per year, 126 per half year
@@ -54,11 +56,11 @@ save_dir = args.save
 HIDDEN_SIZE = args.hidden_size
 pmnist = args.pmnist
 BATCH_SIZE = args.batch_size
-n_epochs = args.n_epochs
-use_gpu = args.gpu
-torch.manual_seed(1)
+N_EPOCHS = args.n_epochs
+USE_GPU = args.gpu
+PARALLEL = args.parallel
 
-learning_rate = 0.1
+learning_rate = 1e-4
 TRAIN_SIZE = 1
 #TEST_SIZE = 2
 INPUT_DIM = 2
@@ -66,9 +68,13 @@ INPUT_DIM = 2
 PREDICT_DIM = 1
 #HISTORY_DIM = 180
 
-device = torch.device("cuda:0" if use_gpu else "cpu")
-if use_gpu:
+device = torch.device("cuda:0" if USE_GPU else "cpu")
+if USE_GPU:
     torch.set_default_tensor_type(torch.cuda.DoubleTensor)
+    if PARALLEL:
+        MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
+    else:
+        MINIBATCH_SIZE = BATCH_SIZE
 else:
     torch.set_default_tensor_type(torch.DoubleTensor)
 
@@ -128,43 +134,42 @@ x_batch, y_batch, target_batch = data_iter.__next__()
 n_stock = int(x_batch.size(2)/2)
 
 encoder = encoder(n_stock = n_stock, 
-                  batch_size = BATCH_SIZE,
+                  batch_size = MINIBATCH_SIZE,
                   hidden_size = HIDDEN_SIZE, 
                   T = T,
                   device = device)
-decoder = decoder(encoder_hidden_size = HIDDEN_SIZE,
+decoder = decoder(batch_size = MINIBATCH_SIZE,
+                  encoder_hidden_size = HIDDEN_SIZE,
                   decoder_hidden_size = HIDDEN_SIZE,
-                  T = T)
+                  T = T,
+                  device = device)
 
-#if torch.cuda.is_available():
-#    MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
-#else:
-#    MINIBATCH_SIZE = BATCH_SIZE
-#if parallel:
-#    encoder = nn.DataParallel(encoder)
-#    decoder = nn.DataParallel(decoder)
+if PARALLEL:
+    encoder = nn.DataParallel(encoder, dim=0)
+    decoder = nn.DataParallel(decoder, dim=0)
+
+encoder.to(device)
+decoder.to(device)
 
 encoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, encoder.parameters()),
                                    lr = learning_rate)
 decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decoder.parameters()),
                                    lr = learning_rate)
 
-#iter_per_epoch = int(np.ceil(train_size * 1. / BATCH_SIZE))
-#iter_losses = np.zeros(n_epochs * iter_per_epoch)
-#epoch_losses = np.zeros(n_epochs)
 
 loss_func = nn.MSELoss()
 
-n_iter = 0
-
-encoder_optimizer.zero_grad()
-decoder_optimizer.zero_grad()
-
-input_encoded = encoder(x_batch)
-#y_pred = decoder(input_encoded, y_batch).squeeze()
-#
-#loss = loss_func(y_pred, target_batch)
-#loss.backward()
-#
-#encoder_optimizer.step()
-#decoder_optimizer.step()
+for n_iter in range(N_EPOCHS):
+    
+    encoder_optimizer.zero_grad()
+    decoder_optimizer.zero_grad()
+    
+    exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
+    y_pred = decoder(exogenous_encoded, y_incoded)
+    
+    loss = loss_func(y_pred, target_batch)
+    print(loss)
+    loss.backward()
+    
+    encoder_optimizer.step()
+    decoder_optimizer.step()

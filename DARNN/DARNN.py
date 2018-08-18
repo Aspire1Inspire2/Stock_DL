@@ -8,9 +8,13 @@ import torch.nn.functional as F
 
 class encoder(nn.Module):
     def __init__(self, n_stock, batch_size, hidden_size, T, device):
-        # input size: number of underlying factors (81)
-        # T: number of time steps (10)
-        # hidden_size: dimension of the hidden state
+        """
+        n_stock: number of stocks
+        batch_size: batch size
+        hidden_size: hidden size
+        T: number of time steps
+        device: running device
+        """
         super(encoder, self).__init__()
         self.n_stock = n_stock
         self.n_fea = n_stock * 2 # number of features
@@ -19,29 +23,19 @@ class encoder(nn.Module):
         self.T = T
         self.device = device
         
-        # hidden, cell: initial states with dimention hidden_size
+        # hidden, cell, attn_weights: initial states with dimention hidden_size
         self.hidden = torch.rand([1, batch_size, hidden_size],
                             dtype=None, device=device, requires_grad=False)
         self.cell = torch.rand([1, batch_size, hidden_size],
                             dtype=None, device=device, requires_grad=False)
         self.attn_weights = nn.Parameter(torch.rand([batch_size, n_stock],
                             dtype=None, device=device, requires_grad=False))
-        # perceptron in the paper is taking too much memory
-#        self.perceptron = nn.Sequential(
-#            nn.Linear(in_features = T + 2 * hidden_size, out_features = T),
-#            nn.Tanh()
-#            nn.Linear(in_features = T, out_features = 1)
-#        )
         
         self.lstm = nn.LSTM(input_size = self.n_fea, 
                             hidden_size = hidden_size,
                             batch_first = True)
 
     def forward(self, input_data):
-        
-        input_encoded = torch.zeros([self.batch_size, self.T, self.hidden_size],
-                                     dtype=None, device=self.device, requires_grad=False)
-        
         alpha = F.softmax(self.attn_weights, dim = 1) * self.n_stock 
         alpha = alpha.transpose(0,1) \
                      .repeat(1, 2) \

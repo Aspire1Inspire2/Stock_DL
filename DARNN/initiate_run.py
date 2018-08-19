@@ -77,7 +77,7 @@ else:
 if PARALLEL:
     MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
 else:
-    MINIBATCH_SIZE = BATCH_SIZE    
+    MINIBATCH_SIZE = BATCH_SIZE
 
 #Load the original data
 stock_data = pickle.load(open(DATA_PATH, 'rb'))

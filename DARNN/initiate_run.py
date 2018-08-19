@@ -1,22 +1,14 @@
-
 import torch
 from torch import nn
 from torch import optim
-#import torch.nn.functional as F
-#
-#import pandas as pd
-#import numpy as np
-#import matplotlib.pyplot as plt
-
-import pickle
-import numpy as np
-
 from torch.utils.data import DataLoader
+
+import argparse
+import pickle
+import pandas as pd
 
 from DARNN import encoder, decoder
 from data_class import StockDataset
-
-import argparse
 
 parser = argparse.ArgumentParser('Train the model using MNIST dataset.')
 parser.add_argument('--data', default=
@@ -34,7 +26,7 @@ parser.add_argument('--hidden-size', default=64, required=False,
                     help='The number of hidden units')
 parser.add_argument('--pmnist', default=False, action='store_true',
                     help='If set, it uses permutated-MNIST dataset')
-parser.add_argument('--batch-size', default=2, required=False, type=int,
+parser.add_argument('--batch-size', default=32, required=False, type=int,
                     help='The size of each batch')
 parser.add_argument('--n_epochs', default=30, required=False, type=int,
                     help='The maximum iteration count')
@@ -61,7 +53,7 @@ USE_GPU = args.gpu
 PARALLEL = args.parallel
 
 learning_rate = 1e-4
-TRAIN_SIZE = 1
+TRAIN_SIZE = 100
 #TEST_SIZE = 2
 INPUT_DIM = 2
 #HIDDEN_DIM = 14
@@ -80,28 +72,42 @@ else:
     MINIBATCH_SIZE = BATCH_SIZE    
 
 #Load the original data
-stock_data = pickle.load(open(DATA_PATH, 'rb'))
+stock_data = pickle.load(open(DATA_PATH, 'rb')).reset_index(level = 1)
 
 # Set the research begin and end date:
-temp = stock_data.loc['2002-12-31':'2012-12-31'].reset_index()
+begin = pd.to_datetime('2002-12-31')
+end = pd.to_datetime('2012-12-31')
+time_delta = pd.Timedelta(365, unit='d')
+
+stat_eval = stock_data.loc[begin - time_delta : end, ['PERMNO', 'VOL']].copy()
+
+stat_eval = stat_eval.pivot(columns='PERMNO', values=['VOL'])['VOL']
+
+rolling = stat_eval.rolling(T)
+stat_mean = rolling.mean().loc[begin : end]
+stat_min = rolling.min().loc[begin : end]
+stat_max = rolling.max().loc[begin : end]
+
+# Locate the input data to learn
+input_data = stock_data.loc[begin : end].copy()
 
 # From the semi-one-dimension table create a two dim table
+# The VOL data is normalized
 # This two dimension table is used in the Pytorch dataset as input
-temp = temp.pivot(index='DATE', columns='PERMNO', values=['RET','VOL'])
-temp = temp.swaplevel(axis=1).sort_index(axis=1)
+input_data = input_data.pivot(columns='PERMNO', values=['RET','VOL'])
+input_data['VOL'] = (input_data['VOL'] - stat_mean) / (stat_max - stat_min)
+input_data = input_data.swaplevel(axis=1).sort_index(axis=1)
 
-train = temp.loc['2002-12-31':'2011-12-31']
-test = temp.loc['2010-12-31':'2012-12-31']
-
+"""
 #with open('data/input.pickle', 'wb') as handle:
-#    pickle.dump(temp, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
+#    pickle.dump(input_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+#
 ## Load the processed data to accerlate debugging
 ## Before using this line, use the above line to dump the data.
-#temp = pickle.load(open('data/input.pickle', 'rb'))
-
+#input_data = pickle.load(open('data/input.pickle', 'rb'))
+#
 ## Use the following block to select only part of the whole input data
-#columns = np.unique(temp.columns.get_level_values(0).values)
+#columns = np.unique(input_data.columns.get_level_values(0).values)
 #trading_value = pickle.load(open('data/trading_value.pickle', 'rb'))
 #trading_value = trading_value.loc[columns] \
 #                       .sort_values('AMNT', ascending = False)
@@ -110,22 +116,14 @@ test = temp.loc['2010-12-31':'2012-12-31']
 #                       .values
 #cutoff = (trading_value.values.squeeze() / trading_value.iloc[0].values) > 1e-3
 #keep = ranking[cutoff]
-#temp = temp[keep]
+#input_data = input_data[keep]
+"""
 
+train = input_data.loc[begin : end - time_delta]
+test = input_data.loc[end - time_delta * 2 : end]
 
-# Here is how to use it:
-# 1. Input the processed two dim table "temp"
-# 2. Input the number of trading days in lstm input
-# 3. Input the device name
 train_dataset = StockDataset(train, T, y_label, device)
 test_dataset = StockDataset(test, T, y_label, device)
-
-# Let's try out the first sample
-# Compare to temp[10001].iloc[0:253] to see it successfully loaded
-#x, y, target = stock_dataset.__getitem__(0)
-#print(x.size())
-#print(y.size())
-#print(target.size())
 
 # Assign the Dataloader to automatically load batched data for you
 train_dataloader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE,
@@ -133,9 +131,9 @@ train_dataloader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE,
 test_dataloader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE,
                               shuffle=False)
 
-n_stock = int(temp.shape[1] / 2 - 1)
+n_stock = int(input_data.shape[1] / 2 - 1)
 
-
+# Assign the model
 encoder = encoder(n_stock = n_stock,
                   batch_size = MINIBATCH_SIZE,
                   hidden_size = HIDDEN_SIZE,
@@ -147,6 +145,7 @@ decoder = decoder(batch_size = MINIBATCH_SIZE,
                   T = T,
                   device = device)
 
+# Load the model to multiple GPU
 if PARALLEL:
     encoder = nn.DataParallel(encoder, dim=0)
     decoder = nn.DataParallel(decoder, dim=0)
@@ -154,23 +153,28 @@ if PARALLEL:
 encoder.to(device)
 decoder.to(device)
 
+# Assign optimizer
 encoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, encoder.parameters()),
                                    lr = learning_rate)
 decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decoder.parameters()),
                                    lr = learning_rate)
 
-
+# Assign loss function
 loss_func = nn.MSELoss()
 
 ## Lets try out the dataloader
 #data_iter = train_dataloader.__iter__()
-#data_iter.__init__(train_dataloader)
-#x_batch, y_batch, target_batch = data_iter.__next__()
-for n_iter in range(N_EPOCHS):
-    print(n_iter)
-    loss_epoch = []
-    for x_batch, y_batch, target_batch in train_dataloader:
 
+# Train the data
+for n_iter in range(N_EPOCHS):
+    print('Epoch:', n_iter)
+    loss_epoch = []
+
+#    data_iter.__init__(train_dataloader)
+    for x_batch, y_batch, target_batch in train_dataloader:
+#    for i in range(TRAIN_SIZE):
+#        x_batch, y_batch, target_batch = data_iter.__next__()
+        
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
 
@@ -178,18 +182,23 @@ for n_iter in range(N_EPOCHS):
         y_pred = decoder(exogenous_encoded, y_incoded)
 
         loss = loss_func(y_pred, target_batch)
-        print(loss)
-        loss_epoch.append(loss)
+        #print(loss.item())
+        loss_epoch.append(loss.item())
         loss.backward()
 
         encoder_optimizer.step()
         decoder_optimizer.step()
+        
+    print('Epoch loss:', loss_epoch)
+    print('Average epoch loss:', sum(loss_epoch)/len(loss_epoch))
 
-    print(loss_epoch)
-
+# Back testing the data
 with torch.no_grad():
+    test_epoch = []
     for x_batch, y_batch, target_batch in test_dataloader:
         exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
         y_pred = decoder(exogenous_encoded, y_incoded)
         loss = loss_func(y_pred, target_batch)
-        print(loss)
+        test_epoch.append(loss.item())
+    print('Test loss:', test_epoch)
+    print('Average test loss:', sum(test_epoch)/len(test_epoch))

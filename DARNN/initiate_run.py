@@ -48,7 +48,7 @@ torch.manual_seed(1)
 
 #Hyperparameter
 T = 252 # 252 trading days per year, 126 per half year
-y_label = 88331 # The stock PERMNO label, 
+y_label = 88331 # The stock PERMNO label,
                 #this is the stock to be studied
 DATA_PATH = args.data
 model_name = args.model
@@ -71,12 +71,13 @@ PREDICT_DIM = 1
 device = torch.device("cuda:0" if USE_GPU else "cpu")
 if USE_GPU:
     torch.set_default_tensor_type(torch.cuda.DoubleTensor)
-    if PARALLEL:
-        MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
-    else:
-        MINIBATCH_SIZE = BATCH_SIZE
 else:
     torch.set_default_tensor_type(torch.DoubleTensor)
+
+if PARALLEL:
+    MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
+else:
+    MINIBATCH_SIZE = BATCH_SIZE    
 
 #Load the original data
 stock_data = pickle.load(open(DATA_PATH, 'rb'))
@@ -94,7 +95,7 @@ test = temp.loc['2010-12-31':'2012-12-31']
 
 #with open('data/input.pickle', 'wb') as handle:
 #    pickle.dump(temp, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    
+
 ## Load the processed data to accerlate debugging
 ## Before using this line, use the above line to dump the data.
 #temp = pickle.load(open('data/input.pickle', 'rb'))
@@ -134,9 +135,10 @@ test_dataloader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE,
 
 n_stock = int(temp.shape[1] / 2 - 1)
 
-encoder = encoder(n_stock = n_stock, 
+
+encoder = encoder(n_stock = n_stock,
                   batch_size = MINIBATCH_SIZE,
-                  hidden_size = HIDDEN_SIZE, 
+                  hidden_size = HIDDEN_SIZE,
                   T = T,
                   device = device)
 decoder = decoder(batch_size = MINIBATCH_SIZE,
@@ -167,6 +169,7 @@ data_iter = train_dataloader.__iter__()
 for n_iter in range(N_EPOCHS):
     print(n_iter)
     loss_epoch = []
+
     data_iter.__init__(train_dataloader)
     #for x_batch, y_batch, target_batch in train_dataloader:
     for i in range(TRAIN_SIZE):
@@ -174,16 +177,15 @@ for n_iter in range(N_EPOCHS):
         
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
-        
+
         exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
         y_pred = decoder(exogenous_encoded, y_incoded)
-        
+
         loss = loss_func(y_pred, target_batch)
-        print(loss)
-        loss_epoch.append(loss)
+        print(loss.item())
+        loss_epoch.append(loss.item())
         loss.backward()
-        
-        
+
         encoder_optimizer.step()
         decoder_optimizer.step()
         

@@ -33,9 +33,12 @@ class encoder(nn.Module):
         self.exogenous_encode = nn.LSTM(input_size = self.n_fea, 
                                         hidden_size = hidden_size,
                                         batch_first = True)
-
+        self.compress = nn.Tanh()
     def forward(self, input_data, y_history):
-        alpha = F.softmax(self.attn_weights, dim = 1) * self.n_stock 
+#        print('alpha max', self.attn_weights.max())
+#        print('alpha min', self.attn_weights.min())
+        alpha = F.softmax(self.compress(self.attn_weights), 
+                          dim = 1) * self.n_stock 
         alpha = alpha.transpose(0,1) \
                      .repeat(1, 2) \
                      .view(self.n_fea, self.batch_size) \
@@ -75,9 +78,13 @@ class decoder(nn.Module):
                 nn.Linear(decoder_hidden_size * 2, 1),
                 nn.Tanh()
                 )
+        self.compress = nn.Tanh()
         
     def forward(self, exogenous_encoded, y_incoded):
-        beta = F.softmax(self.attn_layer, dim = 1) * self.T 
+#        print('beta max', self.attn_layer.max())
+#        print('beta min', self.attn_layer.min())
+        beta = F.softmax(self.compress(self.attn_layer), 
+                         dim = 1) * self.T 
         beta = beta.unsqueeze(dim=2) \
                    .repeat(1, 1, self.encoder_hidden_size * 2)
         

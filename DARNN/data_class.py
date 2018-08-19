@@ -42,6 +42,7 @@ class StockDataset(Dataset):
         end = idx + self.T
         
         x = self.stock_data.drop(columns=self.ylabel).iloc[begin:end]
+        x = x.copy()
         x = x.swaplevel(axis=1)
         # normalize data
         x['VOL'] = (x['VOL'] - x['VOL'].mean()) / (x['VOL'].max() - x['VOL'].min())
@@ -54,7 +55,9 @@ class StockDataset(Dataset):
                           device = self.device)
         
         y = self.stock_data[self.ylabel].iloc[begin:end]
-        target = self.stock_data[self.ylabel].iloc[end].fillna(0).values[0]
+        y=y.copy()
+        target = self.stock_data[self.ylabel].iloc[end]
+        target = target.copy().fillna(0).values[0]
         
         #normalize data
         y['VOL'] = (y['VOL'] - y['VOL'].mean()) / (y['VOL'].max() - y['VOL'].min())

@@ -34,7 +34,7 @@ parser.add_argument('--hidden-size', default=64, required=False,
                     help='The number of hidden units')
 parser.add_argument('--pmnist', default=False, action='store_true',
                     help='If set, it uses permutated-MNIST dataset')
-parser.add_argument('--batch-size', default=2, required=False, type=int,
+parser.add_argument('--batch-size', default=32, required=False, type=int,
                     help='The size of each batch')
 parser.add_argument('--n_epochs', default=30, required=False, type=int,
                     help='The maximum iteration count')
@@ -61,7 +61,7 @@ USE_GPU = args.gpu
 PARALLEL = args.parallel
 
 learning_rate = 1e-4
-TRAIN_SIZE = 1
+TRAIN_SIZE = 100
 #TEST_SIZE = 2
 INPUT_DIM = 2
 #HIDDEN_DIM = 14
@@ -160,14 +160,17 @@ decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decode
 
 loss_func = nn.MSELoss()
 
-## Lets try out the dataloader
-#data_iter = train_dataloader.__iter__()
-#data_iter.__init__(train_dataloader)
-#x_batch, y_batch, target_batch = data_iter.__next__()
+# Lets try out the dataloader
+data_iter = train_dataloader.__iter__()
+
+
 for n_iter in range(N_EPOCHS):
     print(n_iter)
     loss_epoch = []
-    for x_batch, y_batch, target_batch in train_dataloader:
+    data_iter.__init__(train_dataloader)
+    #for x_batch, y_batch, target_batch in train_dataloader:
+    for i in range(TRAIN_SIZE):
+        x_batch, y_batch, target_batch = data_iter.__next__()
         
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
@@ -180,9 +183,10 @@ for n_iter in range(N_EPOCHS):
         loss_epoch.append(loss)
         loss.backward()
         
+        
         encoder_optimizer.step()
         decoder_optimizer.step()
-    
+        
     print(loss_epoch)
 
 with torch.no_grad():

@@ -162,6 +162,9 @@ decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decode
 # Assign loss function
 loss_func = nn.MSELoss()
 
+# Lets try the data loader
+# data_iter = train_dataloader.__iter__()
+
 # Train the data
 for n_iter in range(N_EPOCHS):
     print('Epoch:', n_iter)

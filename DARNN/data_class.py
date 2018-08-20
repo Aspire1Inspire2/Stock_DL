@@ -38,17 +38,14 @@ class StockDataset(Dataset):
         the first number is price change (Return 'RET')
         the second number is Volumn ('VOL')
         """
-        begin = idx
         end = idx + self.T
         
-        x = self.x.iloc[begin:end]
-        x = x.values
+        x = self.x.iloc[idx:end].values
         x = torch.tensor(x, dtype = torch.float64,
                           requires_grad=False,
                           device = self.device)
         
-        y = self.y.iloc[begin:end]
-        y = y.values
+        y = self.y.iloc[idx:end].values
         y = torch.tensor(y, dtype = torch.float64,
                          requires_grad=False,
                          device = self.device)

@@ -69,7 +69,7 @@ else:
 if PARALLEL:
     MINIBATCH_SIZE = int(BATCH_SIZE / torch.cuda.device_count())
 else:
-    MINIBATCH_SIZE = BATCH_SIZE    
+    MINIBATCH_SIZE = BATCH_SIZE
 
 #Load the original data
 stock_data = pickle.load(open(DATA_PATH, 'rb')).reset_index(level = 1)
@@ -166,8 +166,8 @@ decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decode
 # Assign loss function
 loss_func = nn.MSELoss()
 
-## Lets try out the dataloader
-#data_iter = train_dataloader.__iter__()
+# Lets try the data loader
+# data_iter = train_dataloader.__iter__()
 
 # Train the data
 for n_iter in range(N_EPOCHS):
@@ -178,7 +178,7 @@ for n_iter in range(N_EPOCHS):
     for x_batch, y_batch, target_batch in train_dataloader:
 #    for i in range(TRAIN_SIZE):
 #        x_batch, y_batch, target_batch = data_iter.__next__()
-        
+
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
 
@@ -192,7 +192,7 @@ for n_iter in range(N_EPOCHS):
 
         encoder_optimizer.step()
         decoder_optimizer.step()
-        
+
     print('Epoch loss:', loss_epoch)
     print('Average epoch loss:', sum(loss_epoch)/len(loss_epoch))
 

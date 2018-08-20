@@ -1,4 +1,4 @@
-# Stock_DL
+# Stock_DL with DA-RNN
 
 This project is provided by Yuwei Zhu and Chong Shao. It utilizes deep learning
 to study the trend of stock data. Dataset is not provided in GitHub due to

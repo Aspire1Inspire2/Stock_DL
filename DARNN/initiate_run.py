@@ -34,6 +34,8 @@ parser.add_argument('--gpu', default=False, action='store_true',
                     help='The value specifying whether to use GPU')
 parser.add_argument('--parallel', default=False, action='store_true',
                     help='The value specifying whether to use parallel GPU')
+parser.add_argument('--test', default=False, action='store_true',
+                    help='If run in test mode with a small amount of training data')
 args = parser.parse_args()
 
 torch.manual_seed(1)
@@ -51,6 +53,7 @@ BATCH_SIZE = args.batch_size
 N_EPOCHS = args.n_epochs
 USE_GPU = args.gpu
 PARALLEL = args.parallel
+TEST = args.test
 
 learning_rate = 1e-4
 TRAIN_SIZE = 100
@@ -126,11 +129,11 @@ train_dataset = StockDataset(train, T, y_label, device)
 test_dataset = StockDataset(test, T, y_label, device)
 
 # Assign the Dataloader to automatically load batched data for you
-train_dataloader = DataLoader(dataset=train_dataset, 
+train_dataloader = DataLoader(dataset=train_dataset,
                               batch_size=BATCH_SIZE,
                               shuffle=True,
                               drop_last = True)
-test_dataloader = DataLoader(dataset=test_dataset, 
+test_dataloader = DataLoader(dataset=test_dataset,
                              batch_size=BATCH_SIZE,
                              shuffle=False,
                              drop_last = True)
@@ -167,31 +170,47 @@ decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decode
 loss_func = nn.MSELoss()
 
 # Lets try the data loader
-# data_iter = train_dataloader.__iter__()
+if TEST:
+    data_iter = train_dataloader.__iter__()
 
 # Train the data
 for n_iter in range(N_EPOCHS):
     print('Epoch:', n_iter)
     loss_epoch = []
 
-#    data_iter.__init__(train_dataloader)
-    for x_batch, y_batch, target_batch in train_dataloader:
-#    for i in range(TRAIN_SIZE):
-#        x_batch, y_batch, target_batch = data_iter.__next__()
+    if TEST:
+        data_iter.__init__(train_dataloader)
 
-        encoder_optimizer.zero_grad()
-        decoder_optimizer.zero_grad()
+        for i in range(TRAIN_SIZE):
+            x_batch, y_batch, target_batch = data_iter.__next__()
+            encoder_optimizer.zero_grad()
+            decoder_optimizer.zero_grad()
 
-        exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
-        y_pred = decoder(exogenous_encoded, y_incoded)
+            exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
+            y_pred = decoder(exogenous_encoded, y_incoded)
 
-        loss = loss_func(y_pred, target_batch)
-        #print(loss.item())
-        loss_epoch.append(loss.item())
-        loss.backward()
+            loss = loss_func(y_pred, target_batch)
+            #print(loss.item())
+            loss_epoch.append(loss.item())
+            loss.backward()
 
-        encoder_optimizer.step()
-        decoder_optimizer.step()
+            encoder_optimizer.step()
+            decoder_optimizer.step()
+    else:
+        for x_batch, y_batch, target_batch in train_dataloader:
+            encoder_optimizer.zero_grad()
+            decoder_optimizer.zero_grad()
+
+            exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
+            y_pred = decoder(exogenous_encoded, y_incoded)
+
+            loss = loss_func(y_pred, target_batch)
+            #print(loss.item())
+            loss_epoch.append(loss.item())
+            loss.backward()
+
+            encoder_optimizer.step()
+            decoder_optimizer.step()
 
     print('Epoch loss:', loss_epoch)
     print('Average epoch loss:', sum(loss_epoch)/len(loss_epoch))

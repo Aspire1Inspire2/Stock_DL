@@ -198,7 +198,6 @@ for n_iter in range(N_EPOCHS):
             decoder_optimizer.step()
     else:
         for x_batch, y_batch, target_batch in train_dataloader:
-            x_batch, y_batch, target_batch = data_iter.__next__()
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
 

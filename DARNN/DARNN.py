@@ -74,8 +74,9 @@ class decoder(nn.Module):
                                    bidirectional = True,
                                    batch_first = True)
         self.final = nn.Sequential(
-                nn.Linear(decoder_hidden_size * 2, 1),
-                nn.Tanh()
+                nn.Linear(decoder_hidden_size * 2, decoder_hidden_size),
+                nn.Linear(decoder_hidden_size, 1),
+                nn.Softmax()
                 )
         self.compress = nn.Tanh()
 

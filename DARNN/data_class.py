@@ -25,12 +25,13 @@ class StockDataset(Dataset):
                               device = self.device)
         self.y = pd_data[ylabel].copy().fillna(0).values
         self.y = torch.tensor(self.y, 
-                              dtype = torch.float64,
+                              dtype = torch.uint8,
                               requires_grad=False,
                               device = self.device)
         self.target = pd_data[ylabel, 'RET'].copy().fillna(0).values
+        self.target = (self.target > 0).astype('uint8')
         self.target = torch.tensor(self.target, 
-                                   dtype = torch.float64,
+                                   dtype = torch.uint8,
                                    requires_grad=False,
                                    device = self.device)
         self.total_time = len(pd_data)

@@ -126,10 +126,14 @@ train_dataset = StockDataset(train, T, y_label, device)
 test_dataset = StockDataset(test, T, y_label, device)
 
 # Assign the Dataloader to automatically load batched data for you
-train_dataloader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE,
-                              shuffle=False)
-test_dataloader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE,
-                              shuffle=False)
+train_dataloader = DataLoader(dataset=train_dataset, 
+                              batch_size=BATCH_SIZE,
+                              shuffle=True,
+                              drop_last = True)
+test_dataloader = DataLoader(dataset=test_dataset, 
+                             batch_size=BATCH_SIZE,
+                             shuffle=False,
+                             drop_last = True)
 
 n_stock = int(input_data.shape[1] / 2 - 1)
 
@@ -202,3 +206,7 @@ with torch.no_grad():
         test_epoch.append(loss.item())
     print('Test loss:', test_epoch)
     print('Average test loss:', sum(test_epoch)/len(test_epoch))
+
+
+torch.save(encoder, save_dir + '/encoder')
+torch.save(decoder, save_dir + '/decoder')

@@ -18,9 +18,21 @@ class StockDataset(Dataset):
         self.ylabel = ylabel
         self.device = device
 
-        self.x = pd_data.drop(columns=ylabel).copy().fillna(0)
-        self.y = pd_data[ylabel].copy().fillna(0)
-        self.target = pd_data[ylabel, 'RET'].copy().fillna(0)
+        self.x = pd_data.drop(columns=ylabel).copy().fillna(0).values
+        self.x = torch.tensor(self.x, 
+                              dtype = torch.float64,
+                              requires_grad=False,
+                              device = self.device)
+        self.y = pd_data[ylabel].copy().fillna(0).values
+        self.y = torch.tensor(self.y, 
+                              dtype = torch.float64,
+                              requires_grad=False,
+                              device = self.device)
+        self.target = pd_data[ylabel, 'RET'].copy().fillna(0).values
+        self.target = torch.tensor(self.target, 
+                                   dtype = torch.float64,
+                                   requires_grad=False,
+                                   device = self.device)
         self.total_time = len(pd_data)
         
     def __len__(self):
@@ -38,26 +50,6 @@ class StockDataset(Dataset):
         the first number is price change (Return 'RET')
         the second number is Volumn ('VOL')
         """
-        begin = idx
         end = idx + self.T
         
-        x = self.x.iloc[begin:end]
-        x = x.values
-        x = torch.tensor(x, dtype = torch.float64,
-                          requires_grad=False,
-                          device = self.device)
-        
-        y = self.y.iloc[begin:end]
-        y = y.values
-        y = torch.tensor(y, dtype = torch.float64,
-                         requires_grad=False,
-                         device = self.device)
-        
-        
-        target = self.target.iloc[end]
-        target =  torch.tensor(target, 
-                               dtype = torch.float64,
-                               requires_grad=False,
-                               device = self.device)
-        
-        return x, y, target
+        return self.x[idx:end], self.y[idx:end], self.target[end]

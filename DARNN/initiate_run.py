@@ -21,7 +21,10 @@ parser.add_argument('--model', default='lstm', required=False,
                     help='The name of a model to use')
 parser.add_argument('--save', default='.', required=False,
                     help='The path to save model files')
-parser.add_argument('--hidden-size', default=64, required=False,
+parser.add_argument('--encoder-hsize', default=32, required=False,
+                    type=int,
+                    help='The number of hidden units')
+parser.add_argument('--decoder-hsize', default=16, required=False,
                     type=int,
                     help='The number of hidden units')
 parser.add_argument('--pmnist', default=False, action='store_true',
@@ -47,7 +50,8 @@ y_label = 88331 # The stock PERMNO label,
 DATA_PATH = args.data
 model_name = args.model
 save_dir = args.save
-HIDDEN_SIZE = args.hidden_size
+ENCODER_HSIZE = args.encoder_hsize
+DECODER_HSIZE = args.decoder_hsize
 pmnist = args.pmnist
 BATCH_SIZE = args.batch_size
 N_EPOCHS = args.n_epochs
@@ -143,12 +147,12 @@ n_stock = int(input_data.shape[1] / 2 - 1)
 # Assign the model
 encoder = encoder(n_stock = n_stock,
                   batch_size = MINIBATCH_SIZE,
-                  hidden_size = HIDDEN_SIZE,
+                  hidden_size = ENCODER_HSIZE,
                   T = T,
                   device = device)
 decoder = decoder(batch_size = MINIBATCH_SIZE,
-                  encoder_hidden_size = HIDDEN_SIZE,
-                  decoder_hidden_size = HIDDEN_SIZE,
+                  encoder_hidden_size = ENCODER_HSIZE,
+                  decoder_hidden_size = DECODER_HSIZE,
                   T = T,
                   device = device)
 
@@ -167,7 +171,7 @@ decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decode
                                    lr = learning_rate)
 
 # Assign loss function
-loss_func = nn.MSELoss()
+loss_func = nn.BCEWithLogitsLoss()
 
 # Lets try the data loader
 if TEST:
@@ -215,16 +219,16 @@ for n_iter in range(N_EPOCHS):
     print('Epoch loss:', loss_epoch)
     print('Average epoch loss:', sum(loss_epoch)/len(loss_epoch))
 
-# Back testing the data
-with torch.no_grad():
-    test_epoch = []
-    for x_batch, y_batch, target_batch in test_dataloader:
-        exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
-        y_pred = decoder(exogenous_encoded, y_incoded)
-        loss = loss_func(y_pred, target_batch)
-        test_epoch.append(loss.item())
-    print('Test loss:', test_epoch)
-    print('Average test loss:', sum(test_epoch)/len(test_epoch))
+    # Back testing the data
+    with torch.no_grad():
+        test_epoch = []
+        for x_batch, y_batch, target_batch in test_dataloader:
+            exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
+            y_pred = decoder(exogenous_encoded, y_incoded)
+            loss = loss_func(y_pred, target_batch)
+            test_epoch.append(loss.item())
+        print('Test loss:', test_epoch)
+        print('Average test loss:', sum(test_epoch)/len(test_epoch))
 
 
 torch.save(encoder, save_dir + '/encoder')

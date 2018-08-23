@@ -7,7 +7,7 @@ import argparse
 import pickle
 import pandas as pd
 
-from DARNN import encoder, decoder
+from DARNN import fintech
 from data_class import StockDataset
 
 parser = argparse.ArgumentParser('Train the model using MNIST dataset.')
@@ -21,7 +21,7 @@ parser.add_argument('--model', default='lstm', required=False,
                     help='The name of a model to use')
 parser.add_argument('--save', default='.', required=False,
                     help='The path to save model files')
-parser.add_argument('--encoder-hsize', default=32, required=False,
+parser.add_argument('--encoder-hsize', default=2, required=False,
                     type=int,
                     help='The number of hidden units')
 parser.add_argument('--decoder-hsize', default=16, required=False,
@@ -59,8 +59,8 @@ USE_GPU = args.gpu
 PARALLEL = args.parallel
 TEST = args.test
 
-learning_rate = 1e-4
-TRAIN_SIZE = 100
+learning_rate = 0.01
+TRAIN_SIZE = 5
 #TEST_SIZE = 2
 INPUT_DIM = 2
 #HIDDEN_DIM = 14
@@ -78,22 +78,33 @@ if PARALLEL:
 else:
     MINIBATCH_SIZE = BATCH_SIZE
 
-#Load the original data
-stock_data = pickle.load(open(DATA_PATH, 'rb')).reset_index(level = 1)
 
 # Set the research begin and end date:
 begin = pd.to_datetime('2002-12-31')
 end = pd.to_datetime('2012-12-31')
 time_delta = pd.Timedelta(365, unit='d')
 
-stat_eval = stock_data.loc[begin - time_delta : end, ['PERMNO', 'VOL']].copy()
 
-stat_eval = stat_eval.pivot(columns='PERMNO', values=['VOL'])['VOL']
+"""
+#Load the original data
+stock_data = pickle.load(open(DATA_PATH, 'rb')).reset_index(level = 1)
 
-rolling = stat_eval.rolling(T)
-stat_mean = rolling.mean().loc[begin : end]
-stat_min = rolling.min().loc[begin : end]
-stat_max = rolling.max().loc[begin : end]
+stat_eval = stock_data.loc[begin - time_delta : end, 
+                           ['PERMNO', 'RET', 'VOL']].copy()
+
+stat_eval = stat_eval.pivot(columns='PERMNO', values=['RET', 'VOL'])
+
+ret_eval = stat_eval['RET']
+vol_eval = stat_eval['VOL']
+
+rolling = vol_eval.rolling(T)
+vol_mean = rolling.mean().loc[begin : end]
+#stat_min = rolling.min().loc[begin : end]
+#stat_max = rolling.max().loc[begin : end]
+vol_std = rolling.std().loc[begin : end]
+
+rolling = ret_eval.rolling(T)
+ret_std = rolling.std().loc[begin : end]
 
 # Locate the input data to learn
 input_data = stock_data.loc[begin : end].copy()
@@ -102,16 +113,20 @@ input_data = stock_data.loc[begin : end].copy()
 # The VOL data is normalized
 # This two dimension table is used in the Pytorch dataset as input
 input_data = input_data.pivot(columns='PERMNO', values=['RET','VOL'])
-input_data['VOL'] = (input_data['VOL'] - stat_mean) / (stat_max - stat_min)
+input_data['VOL'] = (input_data['VOL'] - vol_mean) / vol_std
+input_data['RET'] = input_data['RET'] / ret_std
 input_data = input_data.swaplevel(axis=1).sort_index(axis=1)
 
+with open('data/input.pickle', 'wb') as handle:
+    pickle.dump(input_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    
 """
-#with open('data/input.pickle', 'wb') as handle:
-#    pickle.dump(input_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
-#
-## Load the processed data to accerlate debugging
-## Before using this line, use the above line to dump the data.
-#input_data = pickle.load(open('data/input.pickle', 'rb'))
+
+# Load the processed data to accerlate debugging
+# Before using this line, use the above block to dump the data.
+input_data = pickle.load(open('data/input.pickle', 'rb'))
+
+"""
 #
 ## Use the following block to select only part of the whole input data
 #columns = np.unique(input_data.columns.get_level_values(0).values)
@@ -145,30 +160,24 @@ test_dataloader = DataLoader(dataset=test_dataset,
 n_stock = int(input_data.shape[1] / 2 - 1)
 
 # Assign the model
-encoder = encoder(n_stock = n_stock,
+fintech_model = fintech(n_stock = n_stock,
                   batch_size = MINIBATCH_SIZE,
-                  hidden_size = ENCODER_HSIZE,
-                  T = T,
-                  device = device)
-decoder = decoder(batch_size = MINIBATCH_SIZE,
-                  encoder_hidden_size = ENCODER_HSIZE,
+                  encoder_hidden_size = ENCODER_HSIZE, 
                   decoder_hidden_size = DECODER_HSIZE,
                   T = T,
                   device = device)
 
 # Load the model to multiple GPU
 if PARALLEL:
-    encoder = nn.DataParallel(encoder, dim=0)
-    decoder = nn.DataParallel(decoder, dim=0)
+    fintech_model = nn.DataParallel(fintech_model, dim=0)
 
-encoder.to(device)
-decoder.to(device)
+fintech_model.to(device)
 
 # Assign optimizer
-encoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, encoder.parameters()),
-                                   lr = learning_rate)
-decoder_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, decoder.parameters()),
-                                   lr = learning_rate)
+fintech_model_optimizer = optim.Adam(params = filter(lambda p: p.requires_grad, 
+                                               fintech_model.parameters()),
+                               lr = learning_rate,
+                               weight_decay = 0.01)
 
 # Assign loss function
 loss_func = nn.BCEWithLogitsLoss()
@@ -187,49 +196,41 @@ for n_iter in range(N_EPOCHS):
 
         for i in range(TRAIN_SIZE):
             x_batch, y_batch, target_batch = data_iter.__next__()
-            encoder_optimizer.zero_grad()
-            decoder_optimizer.zero_grad()
+            fintech_model.zero_grad()
 
-            exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
-            y_pred = decoder(exogenous_encoded, y_incoded)
+            y_pred = fintech_model(x_batch, y_batch)
 
             loss = loss_func(y_pred, target_batch)
             #print(loss.item())
             loss_epoch.append(loss.item())
             loss.backward()
 
-            encoder_optimizer.step()
-            decoder_optimizer.step()
+            fintech_model_optimizer.step()
     else:
         for x_batch, y_batch, target_batch in train_dataloader:
-            encoder_optimizer.zero_grad()
-            decoder_optimizer.zero_grad()
+            fintech_model.zero_grad()
 
-            exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
-            y_pred = decoder(exogenous_encoded, y_incoded)
+            y_pred = fintech_model(x_batch, y_batch)
 
             loss = loss_func(y_pred, target_batch)
             #print(loss.item())
             loss_epoch.append(loss.item())
             loss.backward()
 
-            encoder_optimizer.step()
-            decoder_optimizer.step()
+            fintech_model_optimizer.step()
 
-    print('Epoch loss:', loss_epoch)
+#    print('Epoch loss:', loss_epoch)
     print('Average epoch loss:', sum(loss_epoch)/len(loss_epoch))
 
     # Back testing the data
     with torch.no_grad():
         test_epoch = []
         for x_batch, y_batch, target_batch in test_dataloader:
-            exogenous_encoded, y_incoded = encoder(x_batch, y_batch)
-            y_pred = decoder(exogenous_encoded, y_incoded)
+            y_pred = fintech_model(x_batch, y_batch)
             loss = loss_func(y_pred, target_batch)
             test_epoch.append(loss.item())
-        print('Test loss:', test_epoch)
+#        print('Test loss:', test_epoch)
         print('Average test loss:', sum(test_epoch)/len(test_epoch))
 
 
-torch.save(encoder, save_dir + '/encoder')
-torch.save(decoder, save_dir + '/decoder')
+torch.save(fintech_model, save_dir + '/fintech_model')

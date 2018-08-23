@@ -39,7 +39,17 @@ class fintech(nn.Module):
 #                        nn.ReLU(),
 #                        nn.Linear(decoder_hidden_size, 1)
 #                        )
-#        
+        for i in range(n_stock):
+            setattr(self, 'encoder_{}'.format(i), 
+                    nn.LSTM(input_size = 2,
+                            hidden_size = encoder_hidden_size,
+                            bidirectional = False,
+                            batch_first = True))
+        
+        
+        
+        
+        
     def forward(self, input_data, y_history):
         alpha = F.softmax(self.compress(self.attn_weights),
                           dim = 1) * self.n_stock
@@ -49,8 +59,12 @@ class fintech(nn.Module):
                      .transpose(0,1) \
                      .unsqueeze(1) \
                      .repeat(1, self.T, 1)
-
-        
+        output_lstm = {}
+        for i in range(self.n_stock):
+            input_i = input_data[:, :, (i-1)*2 : (i*2)]
+            _, (output_lstm[i], _) = \
+            getattr(self, 'encoder_{}'.format(i))(input_i)
+            
         
         
         input_weighted = self.weight(input_data)
